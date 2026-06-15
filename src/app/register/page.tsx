@@ -2,185 +2,236 @@
 
 import React, { useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 
 export default function RegisterPage() {
-  const [firstName, setFirstName] = useState<string>('')
-  const [lastName, setLastName] = useState<string>('')
-  const [email, setEmail] = useState<string>('')
-  const [password, setPassword] = useState<string>('')
-  const [confirmPassword, setConfirmPassword] = useState<string>('')
-  const [acceptTerms, setAcceptTerms] = useState<boolean>(false)
+  const router = useRouter()
 
-  // ROLE STATE
-  const [role, setRole] = useState<string>('')
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [acceptTerms, setAcceptTerms] = useState(false)
+  const [role, setRole] = useState('')
 
   const roles = [
-    'Citizen',
-    'Law Enforcement'
+    { label: 'Citizen', value: 'citizen' },
+    { label: 'Law Enforcement', value: 'law_enforcement' }
   ]
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
 
     if (!role) {
-      alert("Please select a role!")
+      alert('Please select a role!')
       return
     }
 
     if (password !== confirmPassword) {
-      alert("Passwords do not match!")
+      alert('Passwords do not match!')
       return
     }
 
-    alert(
-      `Account registration submitted for: ${firstName} ${lastName} (${email}) as ${role}`
-    )
+    try {
+      const res = await fetch('/api/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          firstName,
+          lastName,
+          email,
+          password,
+          role,
+        }),
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        alert(data.error || 'Registration failed')
+        return
+      }
+
+      alert('Account created successfully! 🎉')
+
+      // optional reset
+      setFirstName('')
+      setLastName('')
+      setEmail('')
+      setPassword('')
+      setConfirmPassword('')
+      setRole('')
+      setAcceptTerms(false)
+
+      // Redirect to login page
+      router.push('/login')
+
+    } catch (error) {
+      console.error(error)
+      alert('Something went wrong')
+    }
   }
 
   return (
-    <div className="min-h-screen bg-[#0d1527] text-white flex items-center justify-center p-4 sm:p-6">
+    <div className="min-h-screen bg-[#0d1527] text-white flex items-center justify-center p-4">
 
-      <div className="max-w-4xl w-full grid grid-cols-1 md:grid-cols-12 bg-gradient-to-b from-slate-800/40 to-slate-900/40 border border-slate-700/40 rounded-3xl overflow-hidden shadow-2xl backdrop-blur-md">
+      <div className="max-w-4xl w-full grid grid-cols-1 md:grid-cols-12 bg-slate-900/40 border border-slate-700 rounded-3xl overflow-hidden">
 
-        {/* LEFT PANEL */}
-        <div className="md:col-span-5 bg-gradient-to-br from-blue-600 to-sky-600 p-8 flex flex-col justify-center items-center text-center space-y-4">
-          <div className="bg-white/10 p-4 rounded-full text-4xl animate-pulse">
-            🛡️
-          </div>
-
-          <h2 className="text-2xl sm:text-3xl font-extrabold">
-            Join CrimeAlert
-          </h2>
-
-          <p className="text-blue-100 text-sm max-w-xs">
-            Create your profile to start monitoring safety alerts and community updates.
+        {/* LEFT */}
+        <div className="md:col-span-5 bg-blue-600 p-8 flex flex-col justify-center items-center text-center">
+          <h2 className="text-3xl font-bold">Join CrimeAlert</h2>
+          <p className="text-blue-100 mt-2">
+            Create your account to continue
           </p>
         </div>
 
-        {/* RIGHT PANEL */}
-        <div className="md:col-span-7 p-8 sm:p-10 flex flex-col justify-center">
+        {/* RIGHT */}
+        <div className="md:col-span-7 p-8">
 
           <h3 className="text-2xl font-bold mb-6">
             Create Account
           </h3>
 
-          <form onSubmit={handleRegister} className="space-y-4">
+          <form
+            onSubmit={handleRegister}
+            className="space-y-4"
+          >
 
-            {/* NAME */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-4">
               <input
                 type="text"
-                required
                 placeholder="First Name"
                 value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-                className="w-full bg-slate-900/60 border border-slate-700/60 rounded-xl px-4 py-2.5"
+                onChange={(e) =>
+                  setFirstName(e.target.value)
+                }
+                className="input"
+                required
               />
 
               <input
                 type="text"
-                required
                 placeholder="Last Name"
                 value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-                className="w-full bg-slate-900/60 border border-slate-700/60 rounded-xl px-4 py-2.5"
+                onChange={(e) =>
+                  setLastName(e.target.value)
+                }
+                className="input"
+                required
               />
             </div>
 
-            {/* EMAIL */}
             <input
               type="email"
-              required
-              placeholder="Email Address"
+              placeholder="Email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full bg-slate-900/60 border border-slate-700/60 rounded-xl px-4 py-2.5"
+              onChange={(e) =>
+                setEmail(e.target.value)
+              }
+              className="input"
+              required
             />
 
-            {/* ROLE SELECT FIXED */}
-            <div className="space-y-1.5">
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+            {/* ROLE */}
+            <select
+              value={role}
+              onChange={(e) =>
+                setRole(e.target.value)
+              }
+              className="input"
+              required
+            >
+              <option value="">
                 Select Role
-              </label>
+              </option>
 
-              <select
-                value={role}
-                onChange={(e) => setRole(e.target.value)}
-                required
-                className="w-full bg-slate-900/60 border border-slate-700/60 rounded-xl px-4 py-2.5 text-slate-200"
-              >
-                <option value="" disabled>
-                  -- Choose your role --
+              {roles.map((r) => (
+                <option
+                  key={r.value}
+                  value={r.value}
+                >
+                  {r.label}
                 </option>
+              ))}
+            </select>
 
-                {roles.map((r) => (
-                  <option key={r} value={r}>
-                    {r}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* PASSWORD */}
             <input
               type="password"
-              required
-              placeholder="Create Password"
+              placeholder="Password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-slate-900/60 border border-slate-700/60 rounded-xl px-4 py-2.5"
+              onChange={(e) =>
+                setPassword(e.target.value)
+              }
+              className="input"
+              required
             />
 
-            {/* CONFIRM PASSWORD */}
             <input
               type="password"
-              required
               placeholder="Confirm Password"
               value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              className="w-full bg-slate-900/60 border border-slate-700/60 rounded-xl px-4 py-2.5"
+              onChange={(e) =>
+                setConfirmPassword(
+                  e.target.value
+                )
+              }
+              className="input"
+              required
             />
 
-            {/* TERMS */}
-            <div className="flex items-start pt-1">
+            <div className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
-                required
                 checked={acceptTerms}
-                onChange={(e) => setAcceptTerms(e.target.checked)}
-                className="h-4 w-4 mt-0.5"
+                onChange={(e) =>
+                  setAcceptTerms(
+                    e.target.checked
+                  )
+                }
+                required
               />
 
-              <label className="ml-2 text-xs text-slate-400">
-                I accept the CrimeAlert Terms and Conditions
+              <label>
+                I accept terms & conditions
               </label>
             </div>
 
-            {/* SUBMIT */}
             <button
               type="submit"
-              className="w-full bg-blue-600 hover:bg-blue-500 py-3 rounded-xl font-semibold"
+              className="w-full bg-blue-600 py-3 rounded-xl font-semibold"
             >
-              Create My Account
+              Create Account
             </button>
+
           </form>
 
-          {/* LOGIN LINK (ADDED) */}
-          <div className="mt-6 text-center">
-            <p className="text-xs text-slate-400">
-              Already have an account?
-            </p>
-
+          <div className="mt-4 text-center text-sm">
+            Already have an account?{' '}
             <Link
               href="/login"
-              className="text-blue-400 hover:underline font-medium text-sm"
+              className="text-blue-400"
             >
-              Sign in here
+              Login
             </Link>
           </div>
 
         </div>
       </div>
+
+      <style jsx>{`
+        .input {
+          width: 100%;
+          padding: 10px;
+          border-radius: 10px;
+          background: #0f172a;
+          border: 1px solid #334155;
+          color: white;
+        }
+      `}</style>
+
     </div>
   )
 }

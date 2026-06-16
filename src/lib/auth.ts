@@ -1,85 +1,182 @@
-import type { NextAuthOptions } from "next-auth"
-import CredentialsProvider from "next-auth/providers/credentials"
-import { supabase } from "@/lib/supabase"
-import bcrypt from "bcrypt"
+import NextAuth, {
+  type NextAuthConfig,
+} from 'next-auth'
 
-export const authOptions: NextAuthOptions = {
-  providers: [
-    CredentialsProvider({
-      name: "Credentials",
-      credentials: {
-        email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" },
-      },
-      async authorize(credentials) {
-        if (!credentials?.email || !credentials.password) {
-          return null
-        }
+import Credentials from 'next-auth/providers/credentials'
+import GitHub from 'next-auth/providers/github'
 
-        const normalizedEmail = credentials.email.trim().toLowerCase()
+import { supabase } from '@/lib/supabase'
+import bcrypt from 'bcrypt'
 
-        const { data: user, error } = await supabase
-          .from("users")
-          .select("*")
-          .eq("email", normalizedEmail)
-          .single()
+export const authConfig: NextAuthConfig =
+  {
+    providers: [
+      // EMAIL + PASSWORD LOGIN
+      Credentials({
+        name: 'Credentials',
 
-        if (error || !user) {
-          return null
-        }
+        credentials: {
+          email: {
+            label: 'Email',
+            type: 'email',
+          },
 
-        const isValidPassword = await bcrypt.compare(
-          credentials.password,
-          user.password_hash
-        )
-
-        if (!isValidPassword) {
-          return null
-        }
-
-        return {
-          id: user.id,
-          email: user.email,
-          role: user.role,
-          firstName: user.first_name,
-          lastName: user.last_name,
-        }
-      },
-    }),
-  ],
-  pages: {
-    signIn: "/login",
-  },
-  session: {
-    strategy: "jwt",
-  },
-  callbacks: {
-    async jwt({ token, user }) {
-      if (user) {
-        return {
-          ...token,
-          id: (user as any).id,
-          email: (user as any).email,
-          role: (user as any).role,
-          firstName: (user as any).firstName,
-          lastName: (user as any).lastName,
-        }
-      }
-
-      return token
-    },
-    async session({ session, token }) {
-      return {
-        ...session,
-        user: {
-          ...(session.user as any),
-          id: token.id,
-          role: token.role,
-          firstName: token.firstName,
-          lastName: token.lastName,
+          password: {
+            label: 'Password',
+            type: 'password',
+          },
         },
-      }
+
+        async authorize(
+          credentials
+        ) {
+          const creds =
+            credentials as {
+              email?: string
+              password?: string
+            }
+
+          if (
+            !creds?.email ||
+            !creds?.password
+          ) {
+            return null
+          }
+
+          const normalizedEmail =
+            creds.email
+              .trim()
+              .toLowerCase()
+
+          // FIND USER
+          const {
+            data: user,
+            error,
+          } = await supabase
+            .from('users')
+            .select('*')
+            .eq(
+              'email',
+              normalizedEmail
+            )
+            .single()
+
+          if (error || !user) {
+            return null
+          }
+
+          // CHECK PASSWORD
+          const isValidPassword =
+            await bcrypt.compare(
+              creds.password,
+              user.password_hash
+            )
+
+          if (
+            !isValidPassword
+          ) {
+            return null
+          }
+
+          // RETURN USER
+          return {
+            id: String(user.id),
+            email: user.email,
+            role: user.role,
+            firstName:
+              user.first_name,
+            lastName:
+              user.last_name,
+          }
+        },
+      }),
+
+      // GITHUB LOGIN
+      GitHub({
+        clientId:
+          process.env
+            .GITHUB_ID!,
+        clientSecret:
+          process.env
+            .GITHUB_SECRET!,
+      }),
+    ],
+
+    pages: {
+      signIn: '/login',
     },
-  },
-  secret: process.env.NEXTAUTH_SECRET,
-}
+
+    session: {
+      strategy: 'jwt',
+    },
+
+    callbacks: {
+      async jwt({
+        token,
+        user,
+      }) {
+        if (user) {
+          token.id = user.id
+          token.role =
+            (
+              user as any
+            ).role
+          token.firstName =
+            (
+              user as any
+            ).firstName
+          token.lastName =
+            (
+              user as any
+            ).lastName
+        }
+
+        return token
+      },
+
+      async session({
+        session,
+        token,
+      }) {
+        if (session.user) {
+          ;(
+            session.user as any
+          ).id = token.id
+
+          ;(
+            session.user as any
+          ).role =
+            token.role
+
+          ;(
+            session.user as any
+          ).firstName =
+            token.firstName
+
+          ;(
+            session.user as any
+          ).lastName =
+            token.lastName
+        }
+
+        return session
+      },
+
+      async redirect({
+        baseUrl,
+      }) {
+        return `${baseUrl}/citizen-dashboard`
+      },
+    },
+
+    secret:
+      process.env
+        .NEXTAUTH_SECRET,
+  }
+
+export const {
+  handlers,
+  auth,
+  signIn,
+  signOut,
+} = NextAuth(authConfig)

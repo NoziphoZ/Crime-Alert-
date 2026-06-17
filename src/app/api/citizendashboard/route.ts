@@ -3,40 +3,57 @@ import { supabase } from '@/lib/supabase'
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
+
   const userId = searchParams.get('userId')
 
   if (!userId) {
-    return NextResponse.json({ error: 'Missing userId' }, { status: 400 })
+    return NextResponse.json(
+      { error: 'Missing userId' },
+      { status: 400 }
+    )
   }
 
-  // ---------------- USERS TABLE ----------------
-  const { data: user } = await supabase
-    .from('users')
-    .select('name')
-    .eq('id', userId)
-    .single()
+  // User
+  const { data: user, error: userError } =
+    await supabase
+      .from('users')
+      .select('first_name,last_name')
+      .eq('id', userId)
+      .single()
 
-  // ---------------- ACTIVITIES ----------------
-  const { data: activities } = await supabase
-    .from('activities')
-    .select('*')
-    .eq('user_id', userId)
+  // Reports
+  const { data: reports, error: reportsError } =
+    await supabase
+      .from('crime_reports')
+      .select('*')
+      .eq('user_id', userId)
 
-  // ---------------- STATS ----------------
-  const { data: reports } = await supabase
-    .from('reports')
-    .select('*')
-    .eq('user_id', userId)
+  if (userError || reportsError) {
+    return NextResponse.json(
+      {
+        error: 'Database error',
+        userError,
+        reportsError,
+      },
+      { status: 500 }
+    )
+  }
 
-  const totalReports = reports?.length || 0
+  const activities =
+    reports?.map((report) => ({
+      id: report.id,
+      type: report.type_of_incident,
+      status: report.status,
+      time: report.created_at,
+    })) || []
 
   return NextResponse.json({
     user,
     activities,
     stats: {
-      totalReports,
+      totalReports: reports?.length || 0,
       activeAlerts: 0,
-      safetyStatus: 'Safe'
-    }
+      safetyStatus: 'Safe',
+    },
   })
 }

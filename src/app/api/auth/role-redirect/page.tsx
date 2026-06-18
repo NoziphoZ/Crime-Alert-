@@ -6,7 +6,7 @@ export default async function RoleRedirectPage() {
   const role = (session?.user as any)?.role
 
   if (role === 'law_enforcement') {
-    redirect('/lawenforcementdashboard')
+    redirect('/law-enforcement-dashboard')
   }
   redirect('/citizendashboard')
 }

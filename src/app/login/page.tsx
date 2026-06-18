@@ -15,7 +15,7 @@ export default function LoginPage() {
 
   /* ── After credentials login, read role from session and redirect ── */
   const redirectByRole = (role: string | undefined) => {
-    const target = role === 'law_enforcement' ? '/lawenforcementdashboard' : '/citizendashboard'
+    const target = role === 'law_enforcement' ? '/law-enforcement-dashboard' : '/citizendashboard'
     // Hard navigation: guarantees the freshly-set session cookie is what
     // the next page reads, and sidesteps any App Router push/refresh race.
     window.location.href = target

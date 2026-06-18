@@ -1,95 +1,56 @@
-import NextAuth, {
-  type NextAuthConfig,
-} from 'next-auth'
-
+import NextAuth, { type NextAuthConfig } from 'next-auth'
 import Credentials from 'next-auth/providers/credentials'
 import GitHub from 'next-auth/providers/github'
-
 import { supabase } from '@/lib/supabase'
 import bcrypt from 'bcrypt'
+
+// Normalize whatever ends up in the DB ('Citizen', ' citizen', 'LAW_ENFORCEMENT', etc.)
+// into the two exact values the rest of the app checks against.
+function normalizeRole(raw: string | null | undefined): 'citizen' | 'law_enforcement' {
+  const r = (raw ?? '').trim().toLowerCase()
+  return r === 'law_enforcement' ? 'law_enforcement' : 'citizen'
+}
 
 export const authConfig: NextAuthConfig = {
   providers: [
     Credentials({
       name: 'Credentials',
-
       credentials: {
-        email: {
-          label: 'Email',
-          type: 'email',
-        },
-
-        password: {
-          label: 'Password',
-          type: 'password',
-        },
+        email:    { label: 'Email',    type: 'email'    },
+        password: { label: 'Password', type: 'password' },
       },
 
       async authorize(credentials) {
-        const creds = credentials as {
-          email?: string
-          password?: string
-        }
+        const creds = credentials as { email?: string; password?: string }
+        if (!creds?.email || !creds?.password) return null
 
-        if (
-          !creds?.email ||
-          !creds?.password
-        ) {
-          return null
-        }
+        const normalizedEmail = creds.email.trim().toLowerCase()
 
-        const normalizedEmail =
-          creds.email
-            .trim()
-            .toLowerCase()
-
-        const {
-          data: user,
-          error,
-        } = await supabase
+        const { data: user, error } = await supabase
           .from('users')
           .select('*')
-          .eq(
-            'email',
-            normalizedEmail
-          )
+          .eq('email', normalizedEmail)
           .single()
 
-        if (error || !user) {
-          return null
-        }
+        if (error || !user) return null
 
-        const isValidPassword =
-          await bcrypt.compare(
-            creds.password,
-            user.password_hash
-          )
-
-        if (!isValidPassword) {
-          return null
-        }
+        const isValidPassword = await bcrypt.compare(creds.password, user.password_hash)
+        if (!isValidPassword) return null
 
         return {
-          id: String(user.id),
-          email: user.email,
-
-          // Full name for dashboard
-          name: `${user.first_name} ${user.last_name}`,
-
-          role: user.role,
-          firstName:
-            user.first_name,
-          lastName:
-            user.last_name,
+          id:        String(user.id),
+          email:     user.email,
+          name:      `${user.first_name} ${user.last_name}`,
+          role:      normalizeRole(user.role),
+          firstName: user.first_name,
+          lastName:  user.last_name,
         }
       },
     }),
 
     GitHub({
-      clientId:
-        process.env.GITHUB_ID!,
-      clientSecret:
-        process.env.GITHUB_SECRET!,
+      clientId:     process.env.GITHUB_ID!,
+      clientSecret: process.env.GITHUB_SECRET!,
     }),
   ],
 
@@ -102,74 +63,60 @@ export const authConfig: NextAuthConfig = {
   },
 
   callbacks: {
-    async jwt({
-      token,
-      user,
-    }) {
+    async jwt({ token, user, account, profile }) {
       if (user) {
-        token.id = user.id
-        token.name = user.name
+        token.id        = user.id
+        token.name      = user.name
+        token.role      = (user as any).role
+        token.firstName = (user as any).firstName
+        token.lastName  = (user as any).lastName
+      }
 
-        token.role =
-          (user as any).role
+      if (account?.provider === 'github' && profile) {
+        const email = (profile.email ?? '') as string
+        if (email) {
+          const { data: dbUser } = await supabase
+            .from('users')
+            .select('id, role, first_name, last_name')
+            .eq('email', email.trim().toLowerCase())
+            .single()
 
-        token.firstName =
-          (user as any)
-            .firstName
-
-        token.lastName =
-          (user as any)
-            .lastName
+          if (dbUser) {
+            token.id        = String(dbUser.id)
+            token.role      = normalizeRole(dbUser.role)
+            token.firstName = dbUser.first_name
+            token.lastName  = dbUser.last_name
+          } else {
+            token.role = 'citizen' // GitHub user not found in DB — default
+          }
+        }
       }
 
       return token
     },
 
-    async session({
-      session,
-      token,
-    }) {
+    async session({ session, token }) {
       if (session.user) {
-        ;(
-          session.user as any
-        ).id = token.id
+        const sessionUser = session.user as any
+        const tokenAny = token as any
 
-        session.user.name =
-          token.name as string
-
-        ;(
-          session.user as any
-        ).role = token.role
-
-        ;(
-          session.user as any
-        ).firstName =
-          token.firstName
-
-        ;(
-          session.user as any
-        ).lastName =
-          token.lastName
+        sessionUser.id        = tokenAny.id
+        sessionUser.role      = tokenAny.role
+        sessionUser.firstName = tokenAny.firstName
+        sessionUser.lastName  = tokenAny.lastName
+        sessionUser.name      = tokenAny.name as string
       }
-
       return session
     },
 
-    async redirect({
-      baseUrl,
-    }) {
-      return `${baseUrl}/citizendashboard`
+    async redirect({ url, baseUrl }) {
+      if (url.startsWith('/')) return `${baseUrl}${url}`
+      if (url.startsWith(baseUrl)) return url
+      return `${baseUrl}/auth/role-redirect`
     },
   },
 
-  secret:
-    process.env
-      .NEXTAUTH_SECRET,
+  secret: process.env.NEXTAUTH_SECRET,
 }
 
-export const {
-  handlers,
-  auth,
-  signIn,
-  signOut,
-} = NextAuth(authConfig)
+export const { handlers, auth, signIn, signOut } = NextAuth(authConfig)

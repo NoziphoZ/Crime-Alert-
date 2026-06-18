@@ -123,6 +123,15 @@ export default function CitizenDashboard() {
             {!isSidebarCollapsed &&
               'Dashboard'}
           </button>
+          <button
+            onClick={() =>
+              router.push('/emergencybutton')
+            }
+            className="w-full hover:bg-slate-800 p-3 rounded-xl"
+          >
+            {!isSidebarCollapsed &&
+              'Emergency Button'}
+          </button>
 
           <button
             onClick={() =>

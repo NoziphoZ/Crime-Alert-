@@ -1,80 +1,72 @@
-'use client'
+// src/app/emergencyresponsepage/emergencyresponseclient.tsx
+'use client';
 
 import { useState, useTransition, useCallback } from "react";
 import { useRouter } from "next/navigation";
 
 export type Alert = {
-  AlertID:     string;
-  UserId:      string;
-  AlertTime:   string;
-  Location:    string;
-  Status:      string;
-  Description: string;
-  Latitude:    number | null;
-  Longitude:   number | null;
-  IsActive:    boolean;
-  Users:       { FirstName: string; LastName: string; Phone: string } | null;
+  AlertID: string;
+  UserId: string;
+  AlertTime: string;
+  Location: string;
+  Status: string;
+  Priority: string;
+  Latitude: number | null;
+  Longitude: number | null;
+  IsActive: boolean;
+  Users: { FirstName: string; LastName: string; Phone: string } | null;
 };
 
 export type Stats = {
-  totalToday:  number;
-  active:      number;
-  responding:  number;
-  resolved:    number;
+  totalToday: number;
+  active: number;
+  responding: number;
+  resolved: number;
 };
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
 const STATUS_OPTIONS = [
-  { value: "Received",          icon: "📨", label: "Case Received",     msg: "Please stay calm. We have received your emergency report and are processing your location." },
+  { value: "Received", icon: "📨", label: "Case Received", msg: "Please stay calm. We have received your emergency report and are processing your location." },
   { value: "Location Verified", icon: "📍", label: "Location Verified", msg: "Your location has been confirmed. Emergency responders are being dispatched." },
-  { value: "Unit Dispatched",   icon: "🚗", label: "Unit Dispatched",   msg: "Help is on the way. Please remain at your current location and stay calm." },
-  { value: "Unit Arrived",      icon: "🎯", label: "Unit Arrived",      msg: "Emergency responders have arrived at your location. Please cooperate with officers." },
-  { value: "Case Resolved",     icon: "✅", label: "Case Resolved",     msg: "Your emergency has been successfully handled. Thank you for using CrimeAlert." },
+  { value: "Unit Dispatched", icon: "🚗", label: "Unit Dispatched", msg: "Help is on the way. Please remain at your current location and stay calm." },
+  { value: "Unit Arrived", icon: "🎯", label: "Unit Arrived", msg: "Emergency responders have arrived at your location. Please cooperate with officers." },
+  { value: "Case Resolved", icon: "✅", label: "Case Resolved", msg: "Your emergency has been successfully handled. Thank you for using CrimeAlert." },
 ];
 
-const FILTER_STATUSES  = ["", "Received", "Location Verified", "Unit Dispatched", "Unit Arrived", "Case Resolved"];
+const FILTER_STATUSES = ["", "Received", "Location Verified", "Unit Dispatched", "Unit Arrived", "Case Resolved"];
 const FILTER_PRIORITIES = ["", "Critical", "High", "Medium", "Low"];
-const DATE_RANGES      = ["Today", "Yesterday", "Last7Days", "Last30Days", "All"];
-const PAGE_SIZES       = [10, 25, 50, 100];
+const PAGE_SIZES = [10, 25, 50, 100];
 
 const statusBadge: Record<string, string> = {
-  "Received":          "bg-red-500/20    text-red-400    border border-red-500/40",
-  "Location Verified": "bg-amber-500/20  text-amber-400  border border-amber-500/40",
-  "Unit Dispatched":   "bg-blue-500/20   text-blue-400   border border-blue-500/40",
-  "Unit Arrived":      "bg-purple-500/20 text-purple-400 border border-purple-500/40",
-  "Case Resolved":     "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40",
+  "Received": "bg-red-500/20 text-red-400 border border-red-500/40",
+  "Location Verified": "bg-amber-500/20 text-amber-400 border border-amber-500/40",
+  "Unit Dispatched": "bg-blue-500/20 text-blue-400 border border-blue-500/40",
+  "Unit Arrived": "bg-purple-500/20 text-purple-400 border border-purple-500/40",
+  "Case Resolved": "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40",
 };
 
 const priorityBadge: Record<string, string> = {
-  Critical: "bg-red-500/20    text-red-400    border border-red-500/40",
-  High:     "bg-amber-500/20  text-amber-400  border border-amber-500/40",
-  Medium:   "bg-blue-500/20   text-blue-400   border border-blue-500/40",
-  Low:      "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40",
+  Critical: "bg-red-500/20 text-red-400 border border-red-500/40",
+  High: "bg-orange-500/20 text-orange-400 border border-orange-500/40",
+  Medium: "bg-yellow-500/20 text-yellow-400 border border-yellow-500/40",
+  Low: "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40",
 };
-
-function getPriority(alert: Alert): string {
-  const active = ["Received", "Location Verified", "Unit Dispatched"];
-  if (alert.Status === "Received") return "Critical";
-  if (active.includes(alert.Status)) return "High";
-  if (alert.Status === "Unit Arrived") return "Medium";
-  return "Low";
-}
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
 type Props = {
-  alerts:          Alert[];
-  stats:           Stats;
-  totalRecords:    number;
-  totalPages:      number;
-  currentPage:     number;
-  currentSearch:   string;
-  currentStatus:   string;
+  alerts: Alert[];
+  stats: Stats;
+  totalRecords: number;
+  totalPages: number;
+  currentPage: number;
+  currentSearch: string;
+  currentStatus: string;
   currentPriority: string;
   currentDateRange: string;
   currentPageSize: number;
-  officerName:     string;
+  officerName: string;
 };
 
 type Toast = { message: string; ok: boolean } | null;
@@ -98,36 +90,36 @@ export default function EmergencyResponseClient({
   const [isPending, startTransition] = useTransition();
 
   // Filter state
-  const [search,    setSearch]    = useState(currentSearch);
-  const [status,    setStatus]    = useState(currentStatus);
-  const [priority,  setPriority]  = useState(currentPriority);
+  const [search, setSearch] = useState(currentSearch);
+  const [status, setStatus] = useState(currentStatus);
+  const [priority, setPriority] = useState(currentPriority);
   const [dateRange, setDateRange] = useState(currentDateRange);
-  const [pageSize,  setPageSize]  = useState(currentPageSize);
+  const [pageSize, setPageSize] = useState(currentPageSize);
 
   // Modal state
-  const [modalAlert,      setModalAlert]      = useState<Alert | null>(null);
-  const [selectedStatus,  setSelectedStatus]  = useState<string>("");
-  const [dispatchAlert,   setDispatchAlert]   = useState<Alert | null>(null);
+  const [modalAlert, setModalAlert] = useState<Alert | null>(null);
+  const [selectedStatus, setSelectedStatus] = useState<string>("");
+  const [dispatchAlert, setDispatchAlert] = useState<Alert | null>(null);
 
   // Loading / feedback
   const [actionLoading, setActionLoading] = useState(false);
-  const [toast,         setToast]         = useState<Toast>(null);
+  const [toast, setToast] = useState<Toast>(null);
 
   // ── URL navigation ─────────────────────────────────────────────────────────
 
   const navigate = useCallback((overrides: Record<string, string | number>) => {
     const params = new URLSearchParams();
     const merged = {
-      search:    search,
-      status:    status,
-      priority:  priority,
+      search: search,
+      status: status,
+      priority: priority,
       dateRange: dateRange,
-      pageSize:  String(pageSize),
-      page:      String(currentPage),
+      pageSize: String(pageSize),
+      page: String(currentPage),
       ...Object.fromEntries(Object.entries(overrides).map(([k, v]) => [k, String(v)])),
     };
     Object.entries(merged).forEach(([k, v]) => { if (v) params.set(k, v); });
-    startTransition(() => router.push(`/law-enforcement/respond?${params.toString()}`));
+    startTransition(() => router.push(`/emergencyresponsepage?${params.toString()}`));
   }, [search, status, priority, dateRange, pageSize, currentPage, router]);
 
   const showToast = (message: string, ok: boolean) => {
@@ -142,15 +134,36 @@ export default function EmergencyResponseClient({
     setActionLoading(true);
     try {
       const res = await fetch("/api/law-enforcement/update-alert", {
-        method:  "POST",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ alertId: modalAlert.AlertID, status: selectedStatus }),
+        body: JSON.stringify({ alertId: modalAlert.AlertID, status: selectedStatus }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Update failed");
-      showToast(`✅ Case #${modalAlert.AlertID} updated to "${selectedStatus}"`, true);
+      showToast(`✅ Case #${modalAlert.AlertID.slice(0, 8)} updated to "${selectedStatus}"`, true);
       setModalAlert(null);
       setSelectedStatus("");
+      startTransition(() => router.refresh());
+    } catch (err: any) {
+      showToast(`❌ ${err.message ?? "Something went wrong"}`, false);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // ── Priority update ──────────────────────────────────────────────────────────
+
+  const handlePriorityUpdate = async (alertId: string, newPriority: string) => {
+    setActionLoading(true);
+    try {
+      const res = await fetch("/api/law-enforcement/update-priority", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ alertId, priority: newPriority }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Priority update failed");
+      showToast(`✅ Priority updated to "${newPriority}"`, true);
       startTransition(() => router.refresh());
     } catch (err: any) {
       showToast(`❌ ${err.message ?? "Something went wrong"}`, false);
@@ -166,16 +179,16 @@ export default function EmergencyResponseClient({
     setActionLoading(true);
     try {
       const res = await fetch("/api/law-enforcement/complete-alert", {
-        method:  "POST",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ alertId: dispatchAlert.AlertID }),
+        body: JSON.stringify({ alertId: dispatchAlert.AlertID }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Dispatch failed");
       const name = dispatchAlert.Users
         ? `${dispatchAlert.Users.FirstName} ${dispatchAlert.Users.LastName}`
         : "Unknown";
-      showToast(`✅ Case #${dispatchAlert.AlertID} completed — Reporter: ${name}`, true);
+      showToast(`✅ Case #${dispatchAlert.AlertID.slice(0, 8)} completed — Reporter: ${name}`, true);
       setDispatchAlert(null);
       startTransition(() => router.refresh());
     } catch (err: any) {
@@ -190,7 +203,7 @@ export default function EmergencyResponseClient({
   const pageButtons = (() => {
     const range: (number | "...")[] = [];
     const start = Math.max(1, currentPage - 2);
-    const end   = Math.min(totalPages, currentPage + 2);
+    const end = Math.min(totalPages, currentPage + 2);
     if (start > 1) { range.push(1); if (start > 2) range.push("..."); }
     for (let i = start; i <= end; i++) range.push(i);
     if (end < totalPages) { if (end < totalPages - 1) range.push("..."); range.push(totalPages); }
@@ -198,7 +211,7 @@ export default function EmergencyResponseClient({
   })();
 
   const startRecord = totalRecords > 0 ? (currentPage - 1) * pageSize + 1 : 0;
-  const endRecord   = Math.min(currentPage * pageSize, totalRecords);
+  const endRecord = Math.min(currentPage * pageSize, totalRecords);
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -225,7 +238,7 @@ export default function EmergencyResponseClient({
         <div className={`mb-4 px-4 py-3 rounded-xl text-sm border flex items-center gap-2 ${
           toast.ok
             ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
-            : "bg-red-500/10    border-red-500/30    text-red-300"
+            : "bg-red-500/10 border-red-500/30 text-red-300"
         }`}>
           {toast.message}
         </div>
@@ -328,9 +341,9 @@ export default function EmergencyResponseClient({
           <div className="grid grid-cols-2 gap-4">
             {[
               { label: "Total Today", value: stats.totalToday, color: "text-blue-400" },
-              { label: "Active",      value: stats.active,     color: "text-red-400"  },
-              { label: "Responding",  value: stats.responding, color: "text-amber-400"},
-              { label: "Resolved",    value: stats.resolved,   color: "text-emerald-400" },
+              { label: "Active", value: stats.active, color: "text-red-400" },
+              { label: "Responding", value: stats.responding, color: "text-amber-400" },
+              { label: "Resolved", value: stats.resolved, color: "text-emerald-400" },
             ].map(({ label, value, color }) => (
               <div key={label} className="bg-gradient-to-br from-blue-900 to-blue-950 border-2 border-blue-700 rounded-xl p-4 text-center shadow">
                 <div className={`text-3xl font-extrabold ${color}`}>{value}</div>
@@ -359,7 +372,7 @@ export default function EmergencyResponseClient({
           </div>
         ) : alerts.length === 0 ? (
           <div className="text-center py-16">
-            <p className="text-3xl mb-3">🎉</p>
+            <p className="text-3xl mb-3">📭</p>
             <p className="text-slate-300 font-semibold">No emergency cases match the current filters.</p>
             <p className="text-slate-500 text-sm mt-1">Try adjusting filters or changing the date range.</p>
           </div>
@@ -375,16 +388,15 @@ export default function EmergencyResponseClient({
               </thead>
               <tbody className="divide-y divide-slate-700/60">
                 {alerts.map((alert) => {
-                  const name     = alert.Users ? `${alert.Users.FirstName} ${alert.Users.LastName}` : "Unknown";
-                  const phone    = alert.Users?.Phone ?? "—";
-                  const priority = getPriority(alert);
+                  const name = alert.Users ? `${alert.Users.FirstName} ${alert.Users.LastName}` : "Unknown";
+                  const phone = alert.Users?.Phone ?? "—";
                   return (
                     <tr key={alert.AlertID} className="bg-slate-800/40 hover:bg-slate-800 transition">
-                      <td className="px-4 py-3 font-bold text-white">#{alert.AlertID}</td>
+                      <td className="px-4 py-3 font-bold text-white">#{alert.AlertID.slice(0, 8)}</td>
 
                       <td className="px-4 py-3">
                         <div className="font-medium text-white whitespace-nowrap">{name}</div>
-                        <div className="text-slate-400 text-xs">ID: {alert.UserId}</div>
+                        <div className="text-slate-400 text-xs">ID: {alert.UserId.slice(0, 8)}</div>
                       </td>
 
                       <td className="px-4 py-3">
@@ -406,9 +418,21 @@ export default function EmergencyResponseClient({
                       </td>
 
                       <td className="px-4 py-3">
-                        <span className={`px-2.5 py-1 rounded-full text-xs font-bold uppercase ${priorityBadge[priority] ?? ""}`}>
-                          {priority}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className={`px-2.5 py-1 rounded-full text-xs font-bold uppercase ${priorityBadge[alert.Priority] || ""}`}>
+                            {alert.Priority}
+                          </span>
+                          <select
+                            value={alert.Priority}
+                            onChange={(e) => handlePriorityUpdate(alert.AlertID, e.target.value)}
+                            className="bg-slate-700/50 border border-slate-600 text-white text-xs px-1 py-0.5 rounded"
+                            disabled={actionLoading}
+                          >
+                            {FILTER_PRIORITIES.slice(1).map(p => (
+                              <option key={p} value={p}>{p}</option>
+                            ))}
+                          </select>
+                        </div>
                       </td>
 
                       <td className="px-4 py-3">
@@ -488,7 +512,7 @@ export default function EmergencyResponseClient({
             onClick={(e) => e.stopPropagation()}
           >
             <h2 className="text-xl font-bold text-blue-400 text-center mb-6">Update Emergency Status</h2>
-            <p className="text-slate-400 text-xs text-center mb-4">Case #{modalAlert.AlertID} —
+            <p className="text-slate-400 text-xs text-center mb-4">Case #{modalAlert.AlertID.slice(0, 8)} —
               {modalAlert.Users ? ` ${modalAlert.Users.FirstName} ${modalAlert.Users.LastName}` : " Unknown"}</p>
 
             <div className="space-y-2 mb-6">
@@ -548,7 +572,7 @@ export default function EmergencyResponseClient({
             <div className="bg-slate-900/60 rounded-xl border border-slate-700 p-4 mb-6 space-y-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-slate-400">Case ID</span>
-                <span className="text-white font-semibold">#{dispatchAlert.AlertID}</span>
+                <span className="text-white font-semibold">#{dispatchAlert.AlertID.slice(0, 8)}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">Reporter</span>
@@ -559,6 +583,12 @@ export default function EmergencyResponseClient({
               <div className="flex justify-between">
                 <span className="text-slate-400">Phone</span>
                 <span className="text-white">{dispatchAlert.Users?.Phone ?? "—"}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Priority</span>
+                <span className={`font-semibold ${priorityBadge[dispatchAlert.Priority] || "text-white"}`}>
+                  {dispatchAlert.Priority}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">Location</span>

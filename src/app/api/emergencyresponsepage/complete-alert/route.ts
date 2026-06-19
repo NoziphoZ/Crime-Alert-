@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
+import { auth } from "@/auth";
 import { supabase } from "@/lib/supabase";
-
-const VALID_STATUSES = ["Received", "Location Verified", "Unit Dispatched", "Unit Arrived", "Case Resolved"];
 
 export async function POST(req: NextRequest) {
   const session = await auth();
@@ -10,16 +8,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { alertId, status } = await req.json() as { alertId?: string; status?: string };
+  const { alertId } = await req.json() as { alertId?: string };
 
-  if (!alertId || !status || !VALID_STATUSES.includes(status)) {
-    return NextResponse.json({ error: "Invalid alertId or status" }, { status: 400 });
+  if (!alertId) {
+    return NextResponse.json({ error: "Invalid alertId" }, { status: 400 });
   }
 
   const { error } = await supabase
-    .from("EmergencyAlerts")
-    .update({ Status: status })
-    .eq("AlertID", alertId);
+    .from("emergency_alerts")
+    .update({ 
+      status: "Case Resolved",
+      is_active: false,
+      updated_at: new Date().toISOString()
+    })
+    .eq("id", alertId);
 
   if (error) {
     console.error("Supabase update error:", error.message);

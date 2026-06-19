@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { auth } from '@/lib/auth'
+import { auth } from '@/auth'
 import { supabase } from '@/lib/supabase'
 
 export async function GET() {

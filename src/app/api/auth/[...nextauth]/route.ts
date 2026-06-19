@@ -1,4 +1,4 @@
-import { handlers } from '@/lib/auth'
+import { handlers } from '@/auth'
 
 export const {
   GET,

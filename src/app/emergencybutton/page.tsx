@@ -35,6 +35,27 @@ async function fetchIPLocation(): Promise<Coords | null> {
   }
 }
 
+// ── Reverse Geocoding: Convert lat/lng to address ──
+async function reverseGeocode(lat: number, lng: number): Promise<string> {
+  try {
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=16&addressdetails=1`,
+      {
+        headers: { 'User-Agent': 'CrimeAlert' },
+        signal: AbortSignal.timeout(5000),
+      }
+    )
+    if (!response.ok) return `${lat.toFixed(6)}, ${lng.toFixed(6)}`
+    const data = await response.json()
+    if (data.display_name) {
+      return data.display_name
+    }
+    return `${lat.toFixed(6)}, ${lng.toFixed(6)}`
+  } catch {
+    return `${lat.toFixed(6)}, ${lng.toFixed(6)}`
+  }
+}
+
 export default function EmergencyButton() {
   const [isBroadcasting, setIsBroadcasting]    = useState(false)
   const [broadcastSuccess, setBroadcastSuccess] = useState(false)
@@ -44,6 +65,7 @@ export default function EmergencyButton() {
   const [locationError, setLocationError]      = useState<string | null>(null)
   const [permissionState, setPermissionState]  = useState<PermissionState | 'unknown'>('unknown')
   const [isHttpWarning, setIsHttpWarning]      = useState(false)
+  const [address, setAddress]                  = useState<string | null>(null)
 
   const initRan = useRef(false)
 
@@ -66,6 +88,9 @@ export default function EmergencyButton() {
       setGpsStatus('ip-fallback')
       setLocationLabel(`~${formatLocationLabel(ipCoords)} (IP estimate)`)
       setLocationError(null)
+      // Try to get address from IP coordinates
+      const addr = await reverseGeocode(ipCoords.lat, ipCoords.lng)
+      setAddress(addr)
     } else {
       setGpsStatus('unavailable')
       setLocationLabel('Location unavailable — please call 10111')
@@ -73,7 +98,7 @@ export default function EmergencyButton() {
     }
   }, [])
 
-  /* ── Core GPS request — returns a promise so callers can await it ── */
+  /* ── Core GPS request ── */
   const requestLocation = useCallback((): Promise<Coords | null> => {
     return new Promise((resolve) => {
       if (!navigator.geolocation) {
@@ -88,7 +113,7 @@ export default function EmergencyButton() {
       setLocationError(null)
 
       navigator.geolocation.getCurrentPosition(
-        (pos) => {
+        async (pos) => {
           const c: Coords = {
             lat: pos.coords.latitude,
             lng: pos.coords.longitude,
@@ -102,6 +127,11 @@ export default function EmergencyButton() {
           )
           setLocationError(null)
           setPermissionState('granted')
+          
+          // Get address from coordinates
+          const addr = await reverseGeocode(c.lat, c.lng)
+          setAddress(addr)
+          
           resolve(c)
         },
         async (err) => {
@@ -122,7 +152,7 @@ export default function EmergencyButton() {
     })
   }, [tryIPFallback])
 
-  /* ── Silent background init — doesn't block the button ── */
+  /* ── Silent background init ── */
   useEffect(() => {
     if (initRan.current) return
     initRan.current = true
@@ -145,17 +175,14 @@ export default function EmergencyButton() {
           }
         })
 
-        // If already granted, pre-fetch silently so it's ready before user taps
         if (status.state === 'granted') {
           requestLocation()
         }
-        // If denied, pre-load IP fallback silently
         if (status.state === 'denied') {
           setGpsStatus('denied')
           setLocationError('Location permission denied.')
           await tryIPFallback()
         }
-        // If 'prompt' — do nothing; wait for button tap to trigger the browser prompt
       } catch {
         // Permissions API unavailable — wait for button tap
       }
@@ -164,19 +191,16 @@ export default function EmergencyButton() {
     init()
   }, [requestLocation, tryIPFallback])
 
-  /* ── Button handler — ALWAYS tappable ── */
+  /* ── Button handler ── */
   const handleTriggerSOS = async () => {
-    // STEP 1: If still broadcasting, do nothing
     if (isBroadcasting) return
 
-    // STEP 2: If we don't have coords yet, request location NOW (triggers browser prompt)
     let activeCoords = coords
     if (!activeCoords || gpsStatus === 'idle') {
       setLocationLabel('Requesting location…')
       activeCoords = await requestLocation()
     }
 
-    // STEP 3: If we still have no coords after trying, show a helpful message
     if (!activeCoords) {
       alert(
         '🚫 Could not get your location.\n\n' +
@@ -189,7 +213,6 @@ export default function EmergencyButton() {
       return
     }
 
-    // STEP 4: Confirm before sending
     const sourceWarning =
       activeCoords.source === 'ip'
         ? '\n\n⚠️ Only approximate IP-based location is available (city-level accuracy). GPS was blocked.'
@@ -206,6 +229,13 @@ export default function EmergencyButton() {
     setBroadcastSuccess(false)
 
     try {
+      // Get address if we don't have it yet
+      let locationAddress = address
+      if (!locationAddress) {
+        locationAddress = await reverseGeocode(activeCoords.lat, activeCoords.lng)
+        setAddress(locationAddress)
+      }
+
       const response = await fetch('/api/emergency', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -213,6 +243,8 @@ export default function EmergencyButton() {
           latitude: activeCoords.lat,
           longitude: activeCoords.lng,
           locationSource: activeCoords.source,
+          location: locationAddress, // ← Send the address
+          priority: 'Critical', // ← Default priority for SOS
         }),
       })
 
@@ -234,8 +266,6 @@ export default function EmergencyButton() {
   /* ── Derived UI ── */
   const isIPOnly    = coords?.source === 'ip'
   const isAcquiring = gpsStatus === 'acquiring' || gpsStatus === 'idle'
-
-  // Button is ALWAYS enabled unless actively broadcasting
   const buttonDisabled = isBroadcasting
 
   const gpsBadgeClass =
@@ -266,7 +296,7 @@ export default function EmergencyButton() {
   const buttonLabel =
     isBroadcasting  ? 'Broadcasting…' :
     broadcastSuccess ? 'Dispatched'    :
-    isAcquiring      ? 'EMERGENCY\nSOS' : // still tappable — tap triggers location request
+    isAcquiring      ? 'EMERGENCY\nSOS' :
     isIPOnly         ? 'EMERGENCY\nSOS' :
                        'EMERGENCY\nSOS'
 
@@ -355,7 +385,7 @@ export default function EmergencyButton() {
               </div>
             )}
 
-            {/* GPS HARD DENIED — instructions only, button still works via IP */}
+            {/* GPS HARD DENIED */}
             {gpsStatus === 'denied' && permissionState === 'denied' && !isIPOnly && (
               <div className="w-full bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-center space-y-2">
                 <p className="text-red-400 text-xs font-bold uppercase tracking-wide">GPS Blocked by Browser</p>
@@ -374,7 +404,7 @@ export default function EmergencyButton() {
               </div>
             )}
 
-            {/* ── BIG BUTTON — always tappable ── */}
+            {/* ── BIG BUTTON ── */}
             <button
               onClick={handleTriggerSOS}
               disabled={buttonDisabled}
@@ -382,7 +412,6 @@ export default function EmergencyButton() {
                 text-white ${buttonBg}
               `}
             >
-              {/* Pulse rings — always show when not broadcasting */}
               {!isBroadcasting && !broadcastSuccess && (
                 <>
                   <span className={`absolute inset-0 rounded-full ${isIPOnly ? 'bg-amber-500/20' : 'bg-red-500/20'} animate-ping pointer-events-none`} />
@@ -404,6 +433,11 @@ export default function EmergencyButton() {
                 {gpsStatus === 'ip-fallback' ? 'IP Location (Approximate)' : 'GPS Location'}
               </div>
               <p className="text-xs font-mono break-all">{locationLabel}</p>
+              {address && (
+                <p className="text-xs text-slate-300 break-all">
+                  📍 {address}
+                </p>
+              )}
               {coords && (
                 <a
                   href={`https://maps.google.com/?q=${coords.lat},${coords.lng}`}
@@ -433,8 +467,9 @@ export default function EmergencyButton() {
               <ol className="space-y-2">
                 {[
                   'Your location is detected automatically.',
+                  'The address is captured from your coordinates.',
                   'You confirm the emergency dispatch.',
-                  'An alert is logged with your GPS coordinates.',
+                  'An alert is logged with your GPS coordinates and address.',
                   'The nearest law enforcement unit is notified.',
                   'You receive confirmation of successful dispatch.',
                 ].map((step, i) => (

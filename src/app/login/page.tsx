@@ -1,13 +1,11 @@
+// src/app/login/page.tsx
 'use client'
 
 import React, { useState } from 'react'
 import Link from 'next/link'
 import { signIn, getSession } from 'next-auth/react'
-import { useRouter } from 'next/navigation'
 
 export default function LoginPage() {
-  const router = useRouter()
-
   const [email, setEmail]       = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading]   = useState(false)
@@ -16,8 +14,6 @@ export default function LoginPage() {
   /* ── After credentials login, read role from session and redirect ── */
   const redirectByRole = (role: string | undefined) => {
     const target = role === 'law_enforcement' ? '/law-enforcement-dashboard' : '/citizendashboard'
-    // Hard navigation: guarantees the freshly-set session cookie is what
-    // the next page reads, and sidesteps any App Router push/refresh race.
     window.location.href = target
   }
 
@@ -35,22 +31,39 @@ export default function LoginPage() {
 
       if (!result || result.error) {
         setError('Invalid email or password. Please try again.')
+        setLoading(false)
         return
       }
 
+      // Wait a moment for session to be ready
+      await new Promise(resolve => setTimeout(resolve, 500))
+      
       const session = await getSession()
-      redirectByRole((session?.user as any)?.role)
+      if (session) {
+        redirectByRole((session?.user as any)?.role)
+      } else {
+        setError('Could not retrieve session. Please try again.')
+        setLoading(false)
+      }
     } catch (err) {
       console.error('Login error:', err)
       setError('Something went wrong. Please try again.')
+      setLoading(false)
     } finally {
       setLoading(false)
     }
   }
 
-  /* ── GitHub OAuth: redirect callback in auth.ts sends to /auth/role-redirect ── */
+  /* ── GitHub OAuth: Redirect to /role-redirect ── */
   const handleGitHubLogin = async () => {
-    await signIn('github', { callbackUrl: '/auth/role-redirect' })
+    try {
+      await signIn('github', { 
+        callbackUrl: '/role-redirect'  // Changed from /auth/role-redirect to /role-redirect
+      })
+    } catch (err) {
+      console.error('GitHub login error:', err)
+      setError('GitHub login failed. Please try again.')
+    }
   }
 
   return (
@@ -147,9 +160,6 @@ export default function LoginPage() {
             </Link>
           </p>
         </div>
-
-      
-        
       </div>
     </div>
   )

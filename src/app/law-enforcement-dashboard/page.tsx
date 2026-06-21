@@ -61,7 +61,7 @@ export default async function LawEnforcementDashboard() {
                 <span>📊 Overview Dashboard</span>
               </Link>
               <Link 
-                href="/law-enforcement/process-reports" 
+                href="/process-reports" 
                 className="flex items-center space-x-3 p-2.5 hover:bg-slate-700/50 text-slate-300 rounded-lg transition"
               >
                 <span>📁 Process Reports</span>
@@ -191,7 +191,7 @@ export default async function LawEnforcementDashboard() {
               </Link>
 
               <Link 
-                href="/law-enforcement/process-reports" 
+                href="/process-reports" 
                 className="bg-slate-900 border border-slate-700 hover:border-blue-500/50 p-4 rounded-xl transition duration-200 text-center group"
               >
                 <div className="text-lg mb-1 group-hover:scale-110 transition duration-150">📁</div>

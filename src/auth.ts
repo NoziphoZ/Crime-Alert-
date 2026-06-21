@@ -1,3 +1,4 @@
+// src/auth.ts
 import NextAuth, { type NextAuthConfig } from 'next-auth'
 import Credentials from 'next-auth/providers/credentials'
 import GitHub from 'next-auth/providers/github'
@@ -110,9 +111,18 @@ export const authConfig: NextAuthConfig = {
     },
 
     async redirect({ url, baseUrl }) {
-      if (url.startsWith('/')) return `${baseUrl}${url}`
-      if (url.startsWith(baseUrl)) return url
-      return `${baseUrl}/auth/role-redirect`
+      // If it's a relative URL, make it absolute
+      if (url.startsWith('/')) {
+        return `${baseUrl}${url}`
+      }
+      
+      // If it's already absolute and matches base URL, allow it
+      if (url.startsWith(baseUrl)) {
+        return url
+      }
+      
+      // Default: redirect to role-redirect page (moved to /role-redirect)
+      return `${baseUrl}/role-redirect`
     },
   },
 

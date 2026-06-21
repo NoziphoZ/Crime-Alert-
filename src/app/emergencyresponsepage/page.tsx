@@ -220,7 +220,7 @@ export default async function EmergencyResponsePage({
               🧮 Overview Dashboard
             </Link>
             <Link
-              href="/lawenforcementDashboard"
+              href="/law-enforcement-dashboard"
               className="flex items-center space-x-3 p-2.5 hover:bg-slate-700/50 text-slate-300 rounded-lg transition"
             >
               📊 Command Dashboard
@@ -256,7 +256,7 @@ export default async function EmergencyResponsePage({
             </div>
           </div>
           <Link
-            href="/lawenforcementDashboard"
+            href="/law-enforcement-dashboard"
             className="block text-center w-full bg-blue-700 hover:bg-blue-600 text-white py-2 rounded-lg text-sm font-medium border border-blue-600 transition"
           >
             ← Back to Dashboard

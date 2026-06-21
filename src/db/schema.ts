@@ -25,78 +25,29 @@ export const users = pgTable('users', {
 
 export const crimeReports = pgTable('crime_reports', {
   id: uuid('id').defaultRandom().primaryKey(),
-  userId: uuid('user_id')
-    .notNull()
-    .references(() => users.id, {
-      onDelete: 'cascade',
-    }),
-  isAnonymous: boolean('is_anonymous')
-    .notNull()
-    .default(false),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+  
+  // Reporter Information
+  isAnonymous: boolean('is_anonymous').notNull().default(false),
   fullName: text('full_name'),
   contactInfo: text('contact_info'),
+  
+  // Incident Details
   location: text('location').notNull(),
-  incidentDateTime: timestamp('incident_date_time', {
-    withTimezone: true,
-  }).notNull(),
+  incidentDateTime: timestamp('incident_date_time', { withTimezone: true }).notNull(),
   typeOfIncident: text('type_of_incident').notNull(),
-  priority: text('priority').notNull(),
+  priority: text('priority').notNull().default('Low'),
   description: text('description').notNull(),
   witnesses: text('witnesses'),
   additionalInformation: text('additional_information'),
+  
+  // Evidence & Status Tracking
   evidenceUrl: text('evidence_url'),
-  status: text('status')
-    .notNull()
-    .default('pending'),
+  status: text('status').notNull().default('Submitted'),
+  
+  // Timestamps
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 })
-
-// ── UPDATED EMERGENCY ALERTS SCHEMA ──
-export const emergencyAlerts = pgTable('emergency_alerts', {
-  id: uuid('id')
-    .defaultRandom()
-    .primaryKey(),
-  userId: uuid('user_id').references(
-    () => users.id,
-    {
-      onDelete: 'set null',
-    }
-  ),
-  latitude: numeric('latitude', {
-    precision: 10,
-    scale: 7,
-  }).notNull(),
-  longitude: numeric('longitude', {
-    precision: 10,
-    scale: 7,
-  }).notNull(),
-  location: text('location'), // ← NEW: Human-readable address
-  status: text('status')
-    .notNull()
-    .default('Received'), // ← Changed from 'Critical' to 'Received'
-  priority: text('priority')
-    .notNull()
-    .default('Medium'), // ← NEW: Priority field
-  isActive: boolean('is_active')
-    .notNull()
-    .default(true), // ← NEW: Active flag
-  locationSource: text('location_source')
-    .notNull()
-    .default('unknown'), // ← NEW: Source of location (gps, ip, unknown)
-  createdAt: timestamp('created_at', {
-    withTimezone: true,
-  }).defaultNow(),
-  updatedAt: timestamp('updated_at', {
-    withTimezone: true,
-  }).defaultNow(), // ← NEW: Updated at timestamp
-})
-
-// ── TYPES FOR TYPE SAFETY ──
-export type User = typeof users.$inferSelect
-export type NewUser = typeof users.$inferInsert
-export type CrimeReport = typeof crimeReports.$inferSelect
-export type NewCrimeReport = typeof crimeReports.$inferInsert
-export type EmergencyAlert = typeof emergencyAlerts.$inferSelect
-export type NewEmergencyAlert = typeof emergencyAlerts.$inferInsert
 
 // ── ENUMS FOR VALIDATION ──
 export const EmergencyStatus = {

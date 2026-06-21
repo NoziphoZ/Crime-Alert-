@@ -5,6 +5,9 @@ import { supabase } from "@/lib/supabase";
 import EmergencyResponseClient from "./emergencyresponseclient";
 import Link from "next/link";
 
+// Force this page to always run fresh — never cache stale filter results
+export const dynamic = "force-dynamic";
+
 // ── Types ────────────────────────────────────────────────────────────────────
 
 export type Alert = {
@@ -27,7 +30,7 @@ export type Stats = {
   resolved: number;
 };
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Helpers (back to plain UTC date boundaries, like your original code) ───
 
 function getDateFilter(range: string): { start: string; end?: string } | null {
   const now = new Date();
@@ -65,20 +68,21 @@ const ACTIVE_STATUSES = ["Received", "Location Verified", "Unit Dispatched"];
 export default async function EmergencyResponsePage({
   searchParams,
 }: {
-  searchParams: {
+  // searchParams is a Promise in current Next.js — must be awaited.
+  // (This was the actual bug: filters were silently ignored before.)
+  searchParams: Promise<{
     search?: string;
     status?: string;
     priority?: string;
     dateRange?: string;
     pageSize?: string;
     page?: string;
-  };
+  }>;
 }) {
   // ── Auth guard ─────────────────────────────────────────────────────────────
   const session = await auth();
   if (!session || !session.user) redirect("/login");
-  
-  // Check if user has law enforcement role
+
   const { data: userData } = await supabase
     .from("users")
     .select("role")
@@ -89,22 +93,28 @@ export default async function EmergencyResponsePage({
     redirect("/citizen-dashboard");
   }
 
-  // ── Read params ────────────────────────────────────────────────────────────
-  const searchTerm = searchParams.search?.trim() ?? "";
-  const statusFilter = searchParams.status ?? "";
-  const priorityFilter = searchParams.priority ?? "";
-  const dateRange = searchParams.dateRange ?? "Today";
-  const pageSize = Math.max(1, parseInt(searchParams.pageSize ?? "25", 10));
-  const page = Math.max(1, parseInt(searchParams.page ?? "1", 10));
+  // ── Read params (the fix: await the Promise) ────────────────────────────────
+  const params = await searchParams;
+
+  const searchTerm = params.search?.trim() ?? "";
+  const statusFilter = params.status ?? "";
+  const priorityFilter = params.priority ?? "";
+  const dateRange = params.dateRange ?? "Today";
+  const pageSize = Math.max(1, parseInt(params.pageSize ?? "25", 10));
+  const page = Math.max(1, parseInt(params.page ?? "1", 10));
 
   // ── Stats query (today only, always) ──────────────────────────────────────
   const todayStr = new Date().toISOString().split("T")[0];
 
-  const { data: statsData } = await supabase
+  const { data: statsData, error: statsError } = await supabase
     .from("emergency_alerts")
     .select("status")
     .gte("created_at", `${todayStr}T00:00:00`)
     .lte("created_at", `${todayStr}T23:59:59`);
+
+  if (statsError) {
+    console.error("Stats error:", statsError);
+  }
 
   const stats: Stats = {
     totalToday: statsData?.length ?? 0,
@@ -126,7 +136,7 @@ export default async function EmergencyResponsePage({
       latitude,
       longitude,
       is_active,
-      users!inner (
+      users!left (
         first_name,
         last_name,
         email
@@ -134,31 +144,31 @@ export default async function EmergencyResponsePage({
     `)
     .order("created_at", { ascending: false });
 
-  // Status filter
-  if (statusFilter) {
+  if (statusFilter && statusFilter !== "") {
     query = query.eq("status", statusFilter);
   }
 
-  // Priority filter - now using the actual priority column
-  if (priorityFilter) {
+  if (priorityFilter && priorityFilter !== "") {
     query = query.eq("priority", priorityFilter);
   }
 
-  // Date range filter
-  const dateFilter = getDateFilter(dateRange);
-  if (dateFilter) {
-    if (dateFilter.end) {
-      query = query
-        .gte("created_at", dateFilter.start)
-        .lte("created_at", dateFilter.end);
-    } else {
-      query = query.gte("created_at", dateFilter.start);
+  if (dateRange && dateRange !== "All") {
+    const dateFilter = getDateFilter(dateRange);
+    if (dateFilter) {
+      if (dateFilter.end) {
+        query = query
+          .gte("created_at", dateFilter.start)
+          .lte("created_at", dateFilter.end);
+      } else {
+        query = query.gte("created_at", dateFilter.start);
+      }
     }
   }
 
   const { data: allAlerts, error } = await query;
+
   if (error) {
-    console.error("Supabase error:", error.message);
+    console.error("Supabase error:", error);
   }
 
   // Transform alerts to match expected format
@@ -167,14 +177,14 @@ export default async function EmergencyResponsePage({
     UserId: alert.user_id,
     AlertTime: alert.created_at,
     Location: alert.location || `${alert.latitude}, ${alert.longitude}`,
-    Status: alert.status,
+    Status: alert.status || "Received",
     Priority: alert.priority || "Medium",
-    Latitude: alert.latitude,
-    Longitude: alert.longitude,
-    IsActive: alert.is_active,
+    Latitude: alert.latitude ? parseFloat(alert.latitude) : null,
+    Longitude: alert.longitude ? parseFloat(alert.longitude) : null,
+    IsActive: alert.is_active ?? true,
     Users: alert.users ? {
-      FirstName: alert.users.first_name,
-      LastName: alert.users.last_name,
+      FirstName: alert.users.first_name || "Unknown",
+      LastName: alert.users.last_name || "",
       Phone: alert.users.email || "Not provided",
     } : null,
   })) as Alert[];
@@ -204,6 +214,12 @@ export default async function EmergencyResponsePage({
           </div>
           <nav className="space-y-2">
             <Link
+              href="/overviewdashboard"
+              className="flex items-center space-x-3 p-2.5 hover:bg-slate-700/50 text-slate-300 rounded-lg transition"
+            >
+              🧮 Overview Dashboard
+            </Link>
+            <Link
               href="/lawenforcementDashboard"
               className="flex items-center space-x-3 p-2.5 hover:bg-slate-700/50 text-slate-300 rounded-lg transition"
             >
@@ -216,16 +232,16 @@ export default async function EmergencyResponsePage({
               🚨 Emergency Response
             </Link>
             <Link
-              href="/law-enforcement/process-reports"
+              href="/processreport"
               className="flex items-center space-x-3 p-2.5 hover:bg-slate-700/50 text-slate-300 rounded-lg transition"
             >
-              📁 Process Reports
+              📄 Process Report
             </Link>
             <Link
-              href="/law-enforcement/map"
+              href="/crimehotspots"
               className="flex items-center space-x-3 p-2.5 hover:bg-slate-700/50 text-slate-300 rounded-lg transition"
             >
-              🗺️ Crime Hotspots
+              🔥 Crime Hotspots
             </Link>
           </nav>
         </div>
@@ -241,7 +257,7 @@ export default async function EmergencyResponsePage({
           </div>
           <Link
             href="/lawenforcementDashboard"
-            className="block text-center w-full bg-slate-700 hover:bg-slate-600 text-slate-300 py-2 rounded-lg text-sm font-medium border border-slate-600 transition"
+            className="block text-center w-full bg-blue-700 hover:bg-blue-600 text-white py-2 rounded-lg text-sm font-medium border border-blue-600 transition"
           >
             ← Back to Dashboard
           </Link>

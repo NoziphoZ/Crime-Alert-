@@ -32,7 +32,9 @@ export async function POST(req: NextRequest) {
     }
 
     if (!status || !VALID_STATUSES.includes(status)) {
-      return NextResponse.json({ error: "Invalid status" }, { status: 400 });
+      return NextResponse.json({ 
+        error: `Invalid status. Must be one of: ${VALID_STATUSES.join(", ")}` 
+      }, { status: 400 });
     }
 
     // Update

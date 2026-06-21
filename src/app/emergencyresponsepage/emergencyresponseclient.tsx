@@ -118,7 +118,7 @@ export default function EmergencyResponseClient({
       page: String(currentPage),
       ...Object.fromEntries(Object.entries(overrides).map(([k, v]) => [k, String(v)])),
     };
-    Object.entries(merged).forEach(([k, v]) => { if (v) params.set(k, v); });
+    Object.entries(merged).forEach(([k, v]) => { if (v && v !== "") params.set(k, String(v)); });
     startTransition(() => router.push(`/emergencyresponsepage?${params.toString()}`));
   }, [search, status, priority, dateRange, pageSize, currentPage, router]);
 
@@ -133,11 +133,17 @@ export default function EmergencyResponseClient({
     if (!modalAlert || !selectedStatus) return;
     setActionLoading(true);
     try {
-      const res = await fetch("/api/law-enforcement/update-alert", {
+      const res = await fetch("/api/emergencyresponsepage/update-alert", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ alertId: modalAlert.AlertID, status: selectedStatus }),
       });
+
+      const contentType = res.headers.get("content-type") ?? "";
+      if (!contentType.includes("application/json")) {
+        throw new Error(`Server returned a non-JSON response (status ${res.status}). Check the API route path.`);
+      }
+
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Update failed");
       showToast(`✅ Case #${modalAlert.AlertID.slice(0, 8)} updated to "${selectedStatus}"`, true);
@@ -156,11 +162,17 @@ export default function EmergencyResponseClient({
   const handlePriorityUpdate = async (alertId: string, newPriority: string) => {
     setActionLoading(true);
     try {
-      const res = await fetch("/api/law-enforcement/update-priority", {
+      const res = await fetch("/api/emergencyresponsepage/update-priority", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ alertId, priority: newPriority }),
       });
+
+      const contentType = res.headers.get("content-type") ?? "";
+      if (!contentType.includes("application/json")) {
+        throw new Error(`Server returned a non-JSON response (status ${res.status}). Check the API route path.`);
+      }
+
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Priority update failed");
       showToast(`✅ Priority updated to "${newPriority}"`, true);
@@ -178,11 +190,17 @@ export default function EmergencyResponseClient({
     if (!dispatchAlert) return;
     setActionLoading(true);
     try {
-      const res = await fetch("/api/law-enforcement/complete-alert", {
+      const res = await fetch("/api/emergencyresponsepage/complete-alert", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ alertId: dispatchAlert.AlertID }),
       });
+
+      const contentType = res.headers.get("content-type") ?? "";
+      if (!contentType.includes("application/json")) {
+        throw new Error(`Server returned a non-JSON response (status ${res.status}). Check the API route path.`);
+      }
+
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Dispatch failed");
       const name = dispatchAlert.Users
@@ -233,12 +251,12 @@ export default function EmergencyResponseClient({
         </div>
       </header>
 
-      {/* ── Toast ───────────────────────────────────────────────────────────── */}
+      {/* ── Toast (fixed, always visible) ───────────────────────────────────── */}
       {toast && (
-        <div className={`mb-4 px-4 py-3 rounded-xl text-sm border flex items-center gap-2 ${
+        <div className={`fixed top-6 right-6 z-[100] max-w-sm px-4 py-3 rounded-xl text-sm border shadow-2xl flex items-center gap-2 animate-in ${
           toast.ok
-            ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
-            : "bg-red-500/10 border-red-500/30 text-red-300"
+            ? "bg-emerald-900/95 border-emerald-500/50 text-emerald-200"
+            : "bg-red-900/95 border-red-500/50 text-red-200"
         }`}>
           {toast.message}
         </div>

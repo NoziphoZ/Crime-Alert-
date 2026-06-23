@@ -259,9 +259,19 @@ export default function CitizenDashboard() {
             {!isSidebarCollapsed && <span>Report Incident</span>}
           </button>
 
-          <button className="w-full flex items-center gap-3 text-slate-300 hover:bg-slate-800/70 hover:text-white p-3 rounded-xl transition-colors">
+          <button onClick={() =>
+              router.push('/emergency-status-tracking')
+            }
+          className="w-full flex items-center gap-3 text-slate-300 hover:bg-slate-800/70 hover:text-white p-3 rounded-xl transition-colors">
             <IconUser />
-            {!isSidebarCollapsed && <span>My Profile</span>}
+            {!isSidebarCollapsed && <span>Emergency Status </span>}
+          </button>
+          <button onClick={() =>
+              router.push('/crimemap')
+            }
+          className="w-full flex items-center gap-3 text-slate-300 hover:bg-slate-800/70 hover:text-white p-3 rounded-xl transition-colors">
+            <IconUser />
+            {!isSidebarCollapsed && <span>Crime Map </span>}
           </button>
         </nav>
 

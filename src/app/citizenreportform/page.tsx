@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 
 interface RecentIncident {
   id: string
@@ -10,13 +10,20 @@ interface RecentIncident {
   status: 'Submitted' | 'Resolved' | 'Dispatched'
 }
 
-export default function CitizenReportForm() {
+interface LocationSuggestion {
+  display_name: string
+  lat: string
+  lon: string
+  class: string
+  type: string
+}
 
+export default function CitizenReportForm() {
   const [isAnonymous, setIsAnonymous] = useState(false)
   const [fullName, setFullName] = useState('')
   const [contactInfo, setContactInfo] = useState('')
   const [location, setLocation] = useState('')
-  const [dateTime, setDateTime] = useState('2026-06-12T15:43')
+  const [dateTime, setDateTime] = useState('')
   const [incidentType, setIncidentType] = useState('')
   const [priority, setPriority] = useState('Low')
   const [description, setDescription] = useState('')
@@ -24,9 +31,17 @@ export default function CitizenReportForm() {
   const [additionalInfo, setAdditionalInfo] = useState('')
   const [fileName, setFileName] = useState('No file chosen')
 
+  // Location autocomplete states
+  const [suggestions, setSuggestions] = useState<LocationSuggestion[]>([])
+  const [showSuggestions, setShowSuggestions] = useState(false)
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false)
+  const [selectedLocation, setSelectedLocation] = useState<LocationSuggestion | null>(null)
+  const suggestionRef = useRef<HTMLDivElement>(null)
+
   const [recentIncidents, setRecentIncidents] = useState<RecentIncident[]>([])
   const [incidentsLoading, setIncidentsLoading] = useState(true)
   const [incidentsError, setIncidentsError] = useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const fetchRecentIncidents = useCallback(async () => {
     setIncidentsLoading(true)
@@ -38,7 +53,7 @@ export default function CitizenReportForm() {
         setIncidentsError(data.error || 'Failed to load incidents')
         return
       }
-      setRecentIncidents(data.reports)
+      setRecentIncidents(data.reports || [])
     } catch {
       setIncidentsError('Network error — could not load incidents')
     } finally {
@@ -49,6 +64,81 @@ export default function CitizenReportForm() {
   useEffect(() => {
     fetchRecentIncidents()
   }, [fetchRecentIncidents])
+
+  // Set default date time when component mounts
+  useEffect(() => {
+    if (!dateTime) {
+      const now = new Date()
+      const localDateTime = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
+      setDateTime(localDateTime.toISOString().slice(0, 16))
+    }
+  }, [dateTime])
+
+  // Close suggestions when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (suggestionRef.current && !suggestionRef.current.contains(event.target as Node)) {
+        setShowSuggestions(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  // Debounced location search
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(() => {
+      if (location.length >= 3 && !selectedLocation) {
+        fetchLocationSuggestions(location)
+      } else if (location.length < 3) {
+        setSuggestions([])
+        setShowSuggestions(false)
+      }
+    }, 500)
+
+    return () => clearTimeout(delayDebounceFn)
+  }, [location, selectedLocation])
+
+  const fetchLocationSuggestions = async (query: string) => {
+    setIsLoadingSuggestions(true)
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&addressdetails=1&limit=5&countrycodes=za`,
+        {
+          headers: {
+            'User-Agent': 'CrimeAlert/1.0'
+          }
+        }
+      )
+      
+      if (!response.ok) throw new Error('Failed to fetch suggestions')
+      
+      const data = await response.json()
+      setSuggestions(data)
+      setShowSuggestions(data.length > 0)
+    } catch (error) {
+      console.error('Error fetching location suggestions:', error)
+      setSuggestions([])
+    } finally {
+      setIsLoadingSuggestions(false)
+    }
+  }
+
+  const handleSelectSuggestion = (suggestion: LocationSuggestion) => {
+    setLocation(suggestion.display_name)
+    setSelectedLocation(suggestion)
+    setSuggestions([])
+    setShowSuggestions(false)
+  }
+
+  const handleLocationChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setLocation(e.target.value)
+    setSelectedLocation(null)
+    if (e.target.value.length < 3) {
+      setSuggestions([])
+      setShowSuggestions(false)
+    }
+  }
 
   const formatDate = (isoString: string) => {
     const d = new Date(isoString)
@@ -71,57 +161,93 @@ export default function CitizenReportForm() {
   const handleSubmitReport = async (e: React.FormEvent) => {
     e.preventDefault()
 
+    // Validate required fields
+    if (!location) {
+      alert('Please enter a location.')
+      return
+    }
+    if (!incidentType) {
+      alert('Please select a type of incident.')
+      return
+    }
+    if (!description) {
+      alert('Please provide a description.')
+      return
+    }
+    if (!dateTime) {
+      alert('Please select a date and time.')
+      return
+    }
+
+    setIsSubmitting(true)
+
     try {
+      const payload = {
+        is_anonymous: isAnonymous,
+        full_name: fullName || null,
+        contact_info: contactInfo || null,
+        location: location,
+        incident_date_time: dateTime,
+        type_of_incident: incidentType,
+        priority: priority,
+        description: description,
+        witnesses: witnesses || null,
+        additional_information: additionalInfo || null,
+        evidence_url: null,
+      }
+
+      console.log('Sending payload:', payload)
+
       const response = await fetch('/api/citizenreportform', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          is_anonymous: isAnonymous,
-          full_name: fullName,
-          contact_info: contactInfo,
-          location,
-          incident_date_time: dateTime,
-          type_of_incident: incidentType,
-          priority,
-          description,
-          witnesses,
-          additional_information: additionalInfo,
-          evidence_url: null,
-        }),
+        body: JSON.stringify(payload),
       })
 
       const contentType = response.headers.get('content-type')
       if (!contentType || !contentType.includes('application/json')) {
         const text = await response.text()
-        console.error('Server returned:', text)
-        alert('API route not found or server error')
+        console.error('Server returned non-JSON:', text)
+        alert(`Server error (${response.status})`)
+        setIsSubmitting(false)
         return
       }
 
       const data = await response.json()
+
       if (!response.ok) {
         alert(data.error || 'Failed to submit report')
+        setIsSubmitting(false)
         return
       }
 
-      alert('Report submitted successfully!')
+      alert('✅ Report submitted successfully!')
 
+      // Reset form
       setFullName('')
       setContactInfo('')
       setLocation('')
+      setSelectedLocation(null)
       setIncidentType('')
       setPriority('Low')
       setDescription('')
       setWitnesses('')
       setAdditionalInfo('')
       setFileName('No file chosen')
+      
+      // Reset date to current time
+      const now = new Date()
+      const localDateTime = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
+      setDateTime(localDateTime.toISOString().slice(0, 16))
 
       // Refresh the sidebar list after a successful submission
-      fetchRecentIncidents()
+      await fetchRecentIncidents()
 
     } catch (error) {
-      console.error(error)
-      alert('Something went wrong')
+      console.error('Submit error:', error)
+      alert(error instanceof Error ? error.message : 'Something went wrong')
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -211,16 +337,51 @@ export default function CitizenReportForm() {
               <div className="text-xs font-bold text-sky-400 uppercase tracking-wide flex items-center gap-2">📍 Incident Details</div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1">
+                <div className="space-y-1 relative" ref={suggestionRef}>
                   <label className="block text-[11px] font-semibold text-slate-400 uppercase">Location</label>
                   <input
                     type="text"
-                    placeholder="Street, landmark, or area"
+                    placeholder="Start typing to search for a location..."
                     value={location}
-                    onChange={(e) => setLocation(e.target.value)}
+                    onChange={handleLocationChange}
+                    onFocus={() => {
+                      if (suggestions.length > 0) setShowSuggestions(true)
+                    }}
                     className="w-full bg-slate-900 border border-slate-700/60 rounded-xl px-3 py-2 text-slate-200 text-sm focus:outline-none focus:border-blue-500"
                   />
-                  <span className="text-[10px] text-slate-500 block">e.g., 45 Harrow Rd, Beacon Bay South, East London, 5241</span>
+                  
+                  {/* Location Suggestions Dropdown */}
+                  {showSuggestions && (
+                    <div className="absolute z-50 w-full mt-1 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl max-h-60 overflow-y-auto">
+                      {isLoadingSuggestions ? (
+                        <div className="px-4 py-3 text-sm text-slate-400">
+                          <span className="animate-pulse">Searching...</span>
+                        </div>
+                      ) : suggestions.length > 0 ? (
+                        suggestions.map((suggestion, index) => (
+                          <button
+                            key={index}
+                            type="button"
+                            onClick={() => handleSelectSuggestion(suggestion)}
+                            className="w-full text-left px-4 py-3 hover:bg-slate-700/50 transition-colors border-b border-slate-700/50 last:border-0"
+                          >
+                            <div className="text-sm text-slate-200">{suggestion.display_name}</div>
+                            <div className="text-[10px] text-slate-500 capitalize">
+                              {suggestion.class} · {suggestion.type}
+                            </div>
+                          </button>
+                        ))
+                      ) : (
+                        <div className="px-4 py-3 text-sm text-slate-400">
+                          No locations found. Try a different search.
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  
+                  <span className="text-[10px] text-slate-500 block">
+                    {selectedLocation ? '📍 Location selected' : 'Start typing to search for a location (e.g., "59 st")'}
+                  </span>
                 </div>
                 <div className="space-y-1">
                   <label className="block text-[11px] font-semibold text-slate-400 uppercase">Date & Time</label>
@@ -246,6 +407,9 @@ export default function CitizenReportForm() {
                     <option>Assault</option>
                     <option>Burglary</option>
                     <option>Vandalism</option>
+                    <option>Fraud</option>
+                    <option>Suspicious Activity</option>
+                    <option>Other</option>
                   </select>
                 </div>
                 <div className="space-y-1">
@@ -258,6 +422,7 @@ export default function CitizenReportForm() {
                     <option>Low</option>
                     <option>Medium</option>
                     <option>High</option>
+                    <option>Critical</option>
                   </select>
                 </div>
               </div>
@@ -314,9 +479,10 @@ export default function CitizenReportForm() {
 
             <button
               type="submit"
-              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-blue-600/20 transition-all text-sm uppercase tracking-wider"
+              disabled={isSubmitting}
+              className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3.5 rounded-xl shadow-lg shadow-blue-600/20 transition-all text-sm uppercase tracking-wider"
             >
-              Submit Report
+              {isSubmitting ? 'Submitting...' : 'Submit Report'}
             </button>
 
           </form>

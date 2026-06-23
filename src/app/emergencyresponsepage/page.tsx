@@ -8,7 +8,7 @@ import Link from "next/link";
 // Force this page to always run fresh — never cache stale filter results
 export const dynamic = "force-dynamic";
 
-// ── Types ────────────────────────────────────────────────────────────────────
+
 
 export type Alert = {
   AlertID: string;

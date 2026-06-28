@@ -5,9 +5,11 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 interface RecentIncident {
   id: string
   type_of_incident: string
-  location: string
+  location_text: string // Changed from 'location' to 'location_text'
   incident_date_time: string
   status: 'Submitted' | 'Resolved' | 'Dispatched'
+  latitude?: number
+  longitude?: number
 }
 
 interface LocationSuggestion {
@@ -22,7 +24,9 @@ export default function CitizenReportForm() {
   const [isAnonymous, setIsAnonymous] = useState(false)
   const [fullName, setFullName] = useState('')
   const [contactInfo, setContactInfo] = useState('')
-  const [location, setLocation] = useState('')
+  const [locationText, setLocationText] = useState('') // Changed from 'location'
+  const [latitude, setLatitude] = useState<number | null>(null)
+  const [longitude, setLongitude] = useState<number | null>(null)
   const [dateTime, setDateTime] = useState('')
   const [incidentType, setIncidentType] = useState('')
   const [priority, setPriority] = useState('Low')
@@ -88,16 +92,16 @@ export default function CitizenReportForm() {
   // Debounced location search
   useEffect(() => {
     const delayDebounceFn = setTimeout(() => {
-      if (location.length >= 3 && !selectedLocation) {
-        fetchLocationSuggestions(location)
-      } else if (location.length < 3) {
+      if (locationText.length >= 3 && !selectedLocation) {
+        fetchLocationSuggestions(locationText)
+      } else if (locationText.length < 3) {
         setSuggestions([])
         setShowSuggestions(false)
       }
     }, 500)
 
     return () => clearTimeout(delayDebounceFn)
-  }, [location, selectedLocation])
+  }, [locationText, selectedLocation])
 
   const fetchLocationSuggestions = async (query: string) => {
     setIsLoadingSuggestions(true)
@@ -125,19 +129,70 @@ export default function CitizenReportForm() {
   }
 
   const handleSelectSuggestion = (suggestion: LocationSuggestion) => {
-    setLocation(suggestion.display_name)
+    setLocationText(suggestion.display_name)
     setSelectedLocation(suggestion)
+    setLatitude(parseFloat(suggestion.lat))
+    setLongitude(parseFloat(suggestion.lon))
     setSuggestions([])
     setShowSuggestions(false)
   }
 
   const handleLocationChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setLocation(e.target.value)
+    setLocationText(e.target.value)
     setSelectedLocation(null)
+    setLatitude(null)
+    setLongitude(null)
     if (e.target.value.length < 3) {
       setSuggestions([])
       setShowSuggestions(false)
     }
+  }
+
+  // Get current location using browser geolocation
+  const getCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      alert('Geolocation is not supported by your browser')
+      return
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords
+        
+        // Reverse geocode to get address
+        try {
+          const response = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`,
+            {
+              headers: { 'User-Agent': 'CrimeAlert/1.0' }
+            }
+          )
+          const data = await response.json()
+          
+          if (data.display_name) {
+            setLocationText(data.display_name)
+            setLatitude(latitude)
+            setLongitude(longitude)
+            setSelectedLocation({
+              display_name: data.display_name,
+              lat: latitude.toString(),
+              lon: longitude.toString(),
+              class: 'place',
+              type: 'amenity'
+            })
+          }
+        } catch (error) {
+          console.error('Error reverse geocoding:', error)
+          // Fallback: just use coordinates
+          setLocationText(`${latitude.toFixed(6)}, ${longitude.toFixed(6)}`)
+          setLatitude(latitude)
+          setLongitude(longitude)
+        }
+      },
+      (error) => {
+        alert(`Error getting location: ${error.message}`)
+      }
+    )
   }
 
   const formatDate = (isoString: string) => {
@@ -162,8 +217,12 @@ export default function CitizenReportForm() {
     e.preventDefault()
 
     // Validate required fields
-    if (!location) {
+    if (!locationText) {
       alert('Please enter a location.')
+      return
+    }
+    if (latitude === null || longitude === null) {
+      alert('Please select a valid location from the suggestions. Type at least 3 characters to search.')
       return
     }
     if (!incidentType) {
@@ -186,7 +245,9 @@ export default function CitizenReportForm() {
         is_anonymous: isAnonymous,
         full_name: fullName || null,
         contact_info: contactInfo || null,
-        location: location,
+        location_text: locationText, // Changed from 'location' to 'location_text'
+        latitude: latitude,
+        longitude: longitude,
         incident_date_time: dateTime,
         type_of_incident: incidentType,
         priority: priority,
@@ -226,8 +287,10 @@ export default function CitizenReportForm() {
       // Reset form
       setFullName('')
       setContactInfo('')
-      setLocation('')
+      setLocationText('')
       setSelectedLocation(null)
+      setLatitude(null)
+      setLongitude(null)
       setIncidentType('')
       setPriority('Low')
       setDescription('')
@@ -338,17 +401,33 @@ export default function CitizenReportForm() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1 relative" ref={suggestionRef}>
-                  <label className="block text-[11px] font-semibold text-slate-400 uppercase">Location</label>
+                  <div className="flex justify-between items-center">
+                    <label className="block text-[11px] font-semibold text-slate-400 uppercase">Location</label>
+                    <button
+                      type="button"
+                      onClick={getCurrentLocation}
+                      className="text-[10px] text-blue-400 hover:text-blue-300 underline"
+                    >
+                      📍 Use my location
+                    </button>
+                  </div>
                   <input
                     type="text"
                     placeholder="Start typing to search for a location..."
-                    value={location}
+                    value={locationText}
                     onChange={handleLocationChange}
                     onFocus={() => {
                       if (suggestions.length > 0) setShowSuggestions(true)
                     }}
                     className="w-full bg-slate-900 border border-slate-700/60 rounded-xl px-3 py-2 text-slate-200 text-sm focus:outline-none focus:border-blue-500"
                   />
+                  
+                  {/* Show selected coordinates if available */}
+                  {selectedLocation && latitude !== null && longitude !== null && (
+                    <div className="text-[10px] text-emerald-400 mt-1">
+                      📍 Coordinates: {latitude.toFixed(6)}, {longitude.toFixed(6)}
+                    </div>
+                  )}
                   
                   {/* Location Suggestions Dropdown */}
                   {showSuggestions && (
@@ -380,7 +459,9 @@ export default function CitizenReportForm() {
                   )}
                   
                   <span className="text-[10px] text-slate-500 block">
-                    {selectedLocation ? '📍 Location selected' : 'Start typing to search for a location (e.g., "59 st")'}
+                    {selectedLocation 
+                      ? '📍 Location selected with coordinates' 
+                      : 'Start typing to search for a location (e.g., "Cape Town")'}
                   </span>
                 </div>
                 <div className="space-y-1">
@@ -539,8 +620,15 @@ export default function CitizenReportForm() {
                         {i.status}
                       </span>
                     </div>
-                    <p className="text-[11px] text-slate-400 leading-tight">{i.location}</p>
-                    <span className="text-[10px] text-slate-500 block">{formatDate(i.incident_date_time)}</span>
+                    <p className="text-[11px] text-slate-400 leading-tight">{i.location_text}</p>
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] text-slate-500">{formatDate(i.incident_date_time)}</span>
+                      {i.latitude && i.longitude && (
+                        <span className="text-[9px] text-emerald-500/70">
+                          📍 {i.latitude.toFixed(4)}, {i.longitude.toFixed(4)}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 ))}
 

@@ -268,6 +268,7 @@ export default function CitizenDashboard() {
           </button>
           <button onClick={() =>
               router.push('/crimemap')
+              
             }
           className="w-full flex items-center gap-3 text-slate-300 hover:bg-slate-800/70 hover:text-white p-3 rounded-xl transition-colors">
             <IconUser />

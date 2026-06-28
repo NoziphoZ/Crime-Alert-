@@ -17,7 +17,7 @@ export async function GET() {
 
     const { data, error } = await supabase
       .from('crime_reports')
-      .select('id, type_of_incident, location, incident_date_time, status')
+      .select('id, type_of_incident, location_text, incident_date_time, status, latitude, longitude')
       .eq('user_id', userId)
       .order('incident_date_time', { ascending: false })
       .limit(10)
@@ -52,7 +52,9 @@ export async function POST(request: Request) {
       is_anonymous,
       full_name,
       contact_info,
-      location,
+      location_text, // Changed from 'location' to 'location_text'
+      latitude,
+      longitude,
       incident_date_time,
       type_of_incident,
       priority,
@@ -70,7 +72,9 @@ export async function POST(request: Request) {
           is_anonymous,
           full_name,
           contact_info,
-          location,
+          location_text, // Changed from 'location' to 'location_text'
+          latitude,
+          longitude,
           incident_date_time,
           type_of_incident,
           priority,

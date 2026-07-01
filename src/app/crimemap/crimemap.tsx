@@ -27,6 +27,10 @@ interface CrimeReport {
   longitude: number | null;
 }
 
+interface MarkerInfo {
+  report: CrimeReport;
+}
+
 // ─── Priority Config ──────────────────────────────────────────────────────────
 const PRIORITY_CONFIG: Record<
   Priority,
@@ -68,7 +72,7 @@ function distanceKm(a: { lat: number; lng: number }, b: { lat: number; lng: numb
 
 const GEOAPIFY_API_KEY = process.env.NEXT_PUBLIC_GEOAPIFY_API_KEY ?? "";
 
-const TILE_URL = `https://maps.geoapify.com/v1/tile/dark-matter/{z}/{x}/{y}.png?apiKey=${GEOAPIFY_API_KEY}`;
+const TILE_URL = `https://maps.geoapify.com/v1/tile/osm-bright/{z}/{x}/{y}.png?apiKey=${GEOAPIFY_API_KEY}`;
 const TILE_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors | &copy; <a href="https://www.geoapify.com/">Geoapify</a>';
 
@@ -85,6 +89,10 @@ function ensurePulseStyles() {
       100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); }
     }
     .crime-marker-high { animation: crime-pulse 1.6s infinite; }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
   `;
   document.head.appendChild(style);
 }
@@ -133,7 +141,7 @@ export default function CrimeMap() {
   const [reports, setReports] = useState<CrimeReport[]>([]);
   const [selectedMarker, setSelectedMarker] = useState<MarkerInfo | null>(null);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [mapLoading, setMapLoading] = useState(true);
   const [filterPriority, setFilterPriority] = useState<Priority | "All">("All");
   const [locationError, setLocationError] = useState<string | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
@@ -148,6 +156,8 @@ export default function CrimeMap() {
     label: string;
   } | null>(null);
 
+  const showLoadingOverlay = status === "loading" || mapLoading;
+
   // ── Auth Guard ──────────────────────────────────────────────────────────────
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login");
@@ -156,7 +166,6 @@ export default function CrimeMap() {
   // ── Fetch Reports ───────────────────────────────────────────────────────────
   const fetchReports = useCallback(async () => {
     try {
-      console.log("Fetching reports...");
       const { data, error } = await supabase
         .from("crime_reports")
         .select(
@@ -169,8 +178,7 @@ export default function CrimeMap() {
         setMapError(`Failed to fetch reports: ${error.message}`);
         return;
       }
-      
-      console.log(`Fetched ${data?.length || 0} reports`);
+
       setReports((data as CrimeReport[]) ?? []);
     } catch (err) {
       console.error("Fetch error:", err);
@@ -182,47 +190,31 @@ export default function CrimeMap() {
     fetchReports();
   }, [fetchReports]);
 
-  // ── Get User Location ──────────────────────────────────────────────────────
+  // ── Get User Location (in-memory only) ──────────────────────────────────────
   useEffect(() => {
     if (!navigator.geolocation) {
       setLocationError("Geolocation is not supported by your browser.");
       return;
     }
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        console.log("User location obtained:", pos.coords.latitude, pos.coords.longitude);
-        setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-      },
-      (err) => {
-        console.error("Geolocation error:", err);
-        setLocationError("Unable to retrieve your location.");
-      }
+      (pos) => setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => setLocationError("Unable to retrieve your location.")
     );
   }, []);
 
-  // ── Init Leaflet Map ───────────────────────────────────────────────────────
+  // ── Init Leaflet Map ─────────────────────────────────────────────────────────
+  // IMPORTANT: the map <div> is now rendered unconditionally below (the
+  // loading screen is an overlay on top of it, not a replacement for it), so
+  // mapRef.current is guaranteed to exist by the time this effect runs.
   useEffect(() => {
-    // Check if we have the map container
-    if (!mapRef.current) {
-      console.log("Map container not ready");
-      return;
-    }
+    if (!mapRef.current || leafletMapRef.current) return;
 
-    // Check if map already initialized
-    if (leafletMapRef.current) {
-      console.log("Map already initialized");
-      return;
-    }
-
-    // Check for API key
     if (!GEOAPIFY_API_KEY) {
-      console.error("Geoapify API key is missing!");
-      setMapError("Geoapify API key is missing. Please add NEXT_PUBLIC_GEOAPIFY_API_KEY to your .env.local");
-      setLoading(false);
+      setMapError("Geoapify API key is missing. Add NEXT_PUBLIC_GEOAPIFY_API_KEY to your .env.local.");
+      setMapLoading(false);
       return;
     }
 
-    console.log("Initializing map...");
     ensurePulseStyles();
 
     try {
@@ -240,17 +232,15 @@ export default function CrimeMap() {
       }).addTo(map);
 
       leafletMapRef.current = map;
-      console.log("Map initialized successfully!");
-      setLoading(false);
+      setMapLoading(false);
     } catch (err) {
       console.error("Failed to initialize map:", err);
-      setMapError(`Failed to initialize map: ${err instanceof Error ? err.message : 'Unknown error'}`);
-      setLoading(false);
+      setMapError(`Failed to initialize map: ${err instanceof Error ? err.message : "Unknown error"}`);
+      setMapLoading(false);
     }
 
     return () => {
       if (leafletMapRef.current) {
-        console.log("Cleaning up map");
         leafletMapRef.current.remove();
         leafletMapRef.current = null;
       }
@@ -260,11 +250,11 @@ export default function CrimeMap() {
   // ── Recenter once the user's real location comes in ────────────────────────
   useEffect(() => {
     if (!leafletMapRef.current || !userLocation || searchedArea) return;
-    console.log("Recentering map to user location");
     leafletMapRef.current.setView([userLocation.lat, userLocation.lng], 13);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userLocation]);
 
-  // ── Backfill missing coordinates ───────────────────────────────────────────
+  // ── Backfill missing coordinates via Geoapify ───────────────────────────────
   useEffect(() => {
     if (!GEOAPIFY_API_KEY) return;
 
@@ -272,8 +262,6 @@ export default function CrimeMap() {
       (r) => (r.latitude == null || r.longitude == null) && !geocodeAttempted.current.has(r.id)
     );
     if (missing.length === 0) return;
-
-    console.log(`Geocoding ${missing.length} reports...`);
 
     missing.forEach((report, idx) => {
       geocodeAttempted.current.add(report.id);
@@ -287,10 +275,7 @@ export default function CrimeMap() {
           );
           const data = await res.json();
           const feature = data?.features?.[0];
-          if (!feature) {
-            console.log(`No geocoding result for: ${report.location_text}`);
-            return;
-          }
+          if (!feature) return;
 
           const lat = feature.properties.lat;
           const lng = feature.properties.lon;
@@ -305,7 +290,6 @@ export default function CrimeMap() {
             .eq("id", report.id);
 
           if (error) console.error("Failed to cache geocoded coordinates:", error.message);
-          else console.log(`Geocoded report: ${report.location_text}`);
         } catch (err) {
           console.error("Geocoding error:", err);
         }
@@ -335,7 +319,6 @@ export default function CrimeMap() {
       );
     }
 
-    console.log(`Placing ${visible.length} markers on map`);
     visible.forEach((report) => {
       const marker = L.marker([report.latitude as number, report.longitude as number], {
         icon: makeCrimeIcon(report.priority),
@@ -373,7 +356,7 @@ export default function CrimeMap() {
     }).addTo(map);
   }, [userLocation]);
 
-  // ── City / Area Search ─────────────────────────────────────────────────────
+  // ── City / Area Search (Geoapify) ────────────────────────────────────────────
   const handleSearchArea = useCallback(async () => {
     if (!searchQuery.trim()) return;
 
@@ -436,23 +419,11 @@ export default function CrimeMap() {
     Low: inArea.filter((r) => r.priority === "Low").length,
   };
 
-  // ── Loading State ───────────────────────────────────────────────────────────
-  if (status === "loading" || loading) {
-    return (
-      <div style={styles.loadingScreen}>
-        <div style={styles.loadingInner}>
-          <div style={styles.spinner} />
-          <p style={styles.loadingText}>Loading Crime Alert Map…</p>
-          {mapError && <p style={styles.errorText}>{mapError}</p>}
-          {!GEOAPIFY_API_KEY && (
-            <p style={styles.errorText}>⚠️ Missing Geoapify API Key</p>
-          )}
-        </div>
-      </div>
-    );
-  }
-
   // ── Render ──────────────────────────────────────────────────────────────────
+  // NOTE: there is no early `return` for the loading state anymore. The map
+  // <div> below is always present in the DOM from the very first render, so
+  // the init effect above can always find it. Loading is shown as an overlay
+  // instead, layered on top of the map.
   return (
     <div style={styles.wrapper}>
       {/* Header */}
@@ -523,14 +494,26 @@ export default function CrimeMap() {
         {searchError && <span style={styles.searchError}>{searchError}</span>}
       </div>
 
-      {/* Map */}
+      {/* Map (always mounted) */}
       <div style={styles.mapWrapper}>
         <div ref={mapRef} style={styles.map} />
-        {mapError && (
+
+        {showLoadingOverlay && (
+          <div style={styles.loadingOverlay}>
+            <div style={styles.loadingInner}>
+              <div style={styles.spinner} />
+              <p style={styles.loadingText}>Loading Crime Alert Map…</p>
+              {mapError && <p style={styles.errorText}>{mapError}</p>}
+            </div>
+          </div>
+        )}
+
+        {!showLoadingOverlay && mapError && (
           <div style={styles.mapErrorOverlay}>
             <p>⚠️ {mapError}</p>
           </div>
         )}
+
         {selectedMarker && (
           <InfoPanel report={selectedMarker.report} onClose={() => setSelectedMarker(null)} />
         )}
@@ -540,10 +523,6 @@ export default function CrimeMap() {
 }
 
 // ─── Info Panel ───────────────────────────────────────────────────────────────
-
-interface MarkerInfo {
-  report: CrimeReport;
-}
 
 function InfoPanel({ report, onClose }: { report: CrimeReport; onClose: () => void }) {
   const config = priorityConfig(report.priority);
@@ -649,12 +628,14 @@ const styles: Record<string, React.CSSProperties> = {
     color: "#F1F5F9",
     overflow: "hidden",
   },
-  loadingScreen: {
-    height: "100vh",
+  loadingOverlay: {
+    position: "absolute",
+    inset: 0,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    background: "#0F172A",
+    background: "rgba(15,23,42,0.92)",
+    zIndex: 2000,
   },
   loadingInner: { display: "flex", flexDirection: "column", alignItems: "center", gap: 16 },
   spinner: {
@@ -666,7 +647,7 @@ const styles: Record<string, React.CSSProperties> = {
     animation: "spin 0.9s linear infinite",
   },
   loadingText: { color: "#94A3B8", fontSize: 15, margin: 0 },
-  errorText: { color: "#EF4444", fontSize: 13, margin: 0, maxWidth: 400, textAlign: "center" },
+  errorText: { color: "#EF4444", fontSize: 13, margin: 0, maxWidth: 360, textAlign: "center" },
   header: {
     display: "flex",
     alignItems: "center",
@@ -818,15 +799,3 @@ const styles: Record<string, React.CSSProperties> = {
   infoDesc: { margin: 0, fontSize: 13, color: "#94A3B8", lineHeight: 1.5 },
   infoCoords: { fontSize: 11, color: "#475569", textAlign: "center", marginTop: 4 },
 };
-
-// Add spin animation
-if (typeof document !== "undefined") {
-  const style = document.createElement("style");
-  style.textContent = `
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-  `;
-  document.head.appendChild(style);
-}

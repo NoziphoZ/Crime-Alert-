@@ -13,8 +13,20 @@ export default function LoginPage() {
 
   /* ── After credentials login, read role from session and redirect ── */
   const redirectByRole = (role: string | undefined) => {
-    const target = role === 'law_enforcement' ? '/law-enforcement-dashboard' : '/citizendashboard'
-    window.location.href = target
+    // Check for admin role first
+    if (role?.toLowerCase() === 'admin') {
+      window.location.href = '/admin-dashboard'
+      return
+    }
+    
+    // Then check for law enforcement
+    if (role?.toLowerCase() === 'law_enforcement') {
+      window.location.href = '/law-enforcement-dashboard'
+      return
+    }
+    
+    // Default to citizen dashboard
+    window.location.href = '/citizendashboard'
   }
 
   const handleSignIn = async (e: React.FormEvent) => {
@@ -40,7 +52,9 @@ export default function LoginPage() {
       
       const session = await getSession()
       if (session) {
-        redirectByRole((session?.user as any)?.role)
+        const userRole = (session?.user as any)?.role
+        console.log('User role detected:', userRole) // Debug log
+        redirectByRole(userRole)
       } else {
         setError('Could not retrieve session. Please try again.')
         setLoading(false)
@@ -58,7 +72,7 @@ export default function LoginPage() {
   const handleGitHubLogin = async () => {
     try {
       await signIn('github', { 
-        callbackUrl: '/role-redirect'  // Changed from /auth/role-redirect to /role-redirect
+        callbackUrl: '/role-redirect'
       })
     } catch (err) {
       console.error('GitHub login error:', err)
@@ -106,7 +120,7 @@ export default function LoginPage() {
                 <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider">
                   Password
                 </label>
-                <Link href="/forgot-password" className="text-[11px] text-blue-400 hover:text-blue-300">
+                <Link href="/forget-password" className="text-[11px] text-blue-400 hover:text-blue-300">
                   Forgot password?
                 </Link>
               </div>

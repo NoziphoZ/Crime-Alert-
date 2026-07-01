@@ -5,11 +5,12 @@ import GitHub from 'next-auth/providers/github'
 import { supabase } from '@/lib/supabase'
 import bcrypt from 'bcrypt'
 
-// Normalize whatever ends up in the DB ('Citizen', ' citizen', 'LAW_ENFORCEMENT', etc.)
-// into the two exact values the rest of the app checks against.
-function normalizeRole(raw: string | null | undefined): 'citizen' | 'law_enforcement' {
+// Normalize roles - NOW INCLUDES ADMIN
+function normalizeRole(raw: string | null | undefined): 'citizen' | 'law_enforcement' | 'admin' {
   const r = (raw ?? '').trim().toLowerCase()
-  return r === 'law_enforcement' ? 'law_enforcement' : 'citizen'
+  if (r === 'admin') return 'admin'
+  if (r === 'law_enforcement') return 'law_enforcement'
+  return 'citizen'
 }
 
 export const authConfig: NextAuthConfig = {
@@ -23,9 +24,13 @@ export const authConfig: NextAuthConfig = {
 
       async authorize(credentials) {
         const creds = credentials as { email?: string; password?: string }
-        if (!creds?.email || !creds?.password) return null
+        if (!creds?.email || !creds?.password) {
+          console.log('❌ Missing credentials')
+          return null
+        }
 
         const normalizedEmail = creds.email.trim().toLowerCase()
+        console.log('🔍 Looking for user:', normalizedEmail)
 
         const { data: user, error } = await supabase
           .from('users')
@@ -33,10 +38,26 @@ export const authConfig: NextAuthConfig = {
           .eq('email', normalizedEmail)
           .single()
 
-        if (error || !user) return null
+        if (error || !user) {
+          console.log('❌ User not found:', error?.message || 'No user')
+          return null
+        }
+
+        console.log('✅ User found:', { 
+          email: user.email, 
+          role: user.role,
+          hashExists: !!user.password_hash 
+        })
 
         const isValidPassword = await bcrypt.compare(creds.password, user.password_hash)
-        if (!isValidPassword) return null
+        console.log('🔑 Password valid:', isValidPassword)
+
+        if (!isValidPassword) {
+          console.log('❌ Invalid password')
+          return null
+        }
+
+        console.log('✅ Login successful for:', user.email)
 
         return {
           id:        String(user.id),
@@ -111,17 +132,12 @@ export const authConfig: NextAuthConfig = {
     },
 
     async redirect({ url, baseUrl }) {
-      // If it's a relative URL, make it absolute
       if (url.startsWith('/')) {
         return `${baseUrl}${url}`
       }
-      
-      // If it's already absolute and matches base URL, allow it
       if (url.startsWith(baseUrl)) {
         return url
       }
-      
-      // Default: redirect to role-redirect page (moved to /role-redirect)
       return `${baseUrl}/role-redirect`
     },
   },
